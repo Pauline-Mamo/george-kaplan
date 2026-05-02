@@ -3,19 +3,6 @@ import { useState, useEffect, useRef } from "react";
 /* ─────────────────────────────────────────────────────────────────────────
    CHARACTERS
 ───────────────────────────────────────────────────────────────────────── */
-const DEFAULT_CHARACTERS = [
-  { id:"A", name:"Personnage A", color:"#b03a2e", bg:"#fdf2f0",
-    voiceId:"VR6AewLTigWG4xSOukaG", stability:0.55, similarity:0.80, style:0.20 },
-  { id:"B", name:"Personnage B", color:"#1a5276", bg:"#eaf2f8",
-    voiceId:"21m00Tcm4TlvDq8ikWAM", stability:0.65, similarity:0.85, style:0.15 },
-  { id:"C", name:"Personnage C", color:"#6c3483", bg:"#f5eef8",
-    voiceId:"ErXwobaYiN019PkySvjV", stability:0.75, similarity:0.75, style:0.05 },
-  { id:"D", name:"Personnage D", color:"#1e8449", bg:"#eafaf1",
-    voiceId:"TxGEqnHWrfWFTfGW9XjX", stability:0.50, similarity:0.80, style:0.25 },
-  { id:"E", name:"Personnage E", color:"#b7770d", bg:"#fef9e7",
-    voiceId:"AZnzlk1XvdvUeBnXmlld", stability:0.45, similarity:0.85, style:0.35 },
-];
-
 const VOICE_IDS = [
   { id:"VR6AewLTigWG4xSOukaG", label:"Arnold — grave, masculin" },
   { id:"21m00Tcm4TlvDq8ikWAM", label:"Rachel — claire, féminine" },
@@ -26,15 +13,20 @@ const VOICE_IDS = [
   { id:"pNInz4obpgDQGcFmaJgB", label:"Adam — profond, masculin" },
 ];
 
-/* ─────────────────────────────────────────────────────────────────────────
-   GEORGE KAPLAN BUILT-IN SCRIPT
-───────────────────────────────────────────────────────────────────────── */
 const GK_CHARACTERS = [
   { id:"A", name:"Peter",  color:"#b03a2e", bg:"#fdf2f0", voiceId:"VR6AewLTigWG4xSOukaG", stability:0.55, similarity:0.80, style:0.20 },
   { id:"B", name:"Lisa",   color:"#1a5276", bg:"#eaf2f8", voiceId:"21m00Tcm4TlvDq8ikWAM", stability:0.65, similarity:0.85, style:0.15 },
   { id:"C", name:"Bob",    color:"#6c3483", bg:"#f5eef8", voiceId:"ErXwobaYiN019PkySvjV", stability:0.75, similarity:0.75, style:0.05 },
   { id:"D", name:"John",   color:"#1e8449", bg:"#eafaf1", voiceId:"TxGEqnHWrfWFTfGW9XjX", stability:0.50, similarity:0.80, style:0.25 },
   { id:"E", name:"Tracy",  color:"#b7770d", bg:"#fef9e7", voiceId:"AZnzlk1XvdvUeBnXmlld", stability:0.45, similarity:0.85, style:0.35 },
+];
+
+const DEFAULT_CHARACTERS = [
+  { id:"A", name:"Personnage A", color:"#b03a2e", bg:"#fdf2f0", voiceId:"VR6AewLTigWG4xSOukaG", stability:0.55, similarity:0.80, style:0.20 },
+  { id:"B", name:"Personnage B", color:"#1a5276", bg:"#eaf2f8", voiceId:"21m00Tcm4TlvDq8ikWAM", stability:0.65, similarity:0.85, style:0.15 },
+  { id:"C", name:"Personnage C", color:"#6c3483", bg:"#f5eef8", voiceId:"ErXwobaYiN019PkySvjV", stability:0.75, similarity:0.75, style:0.05 },
+  { id:"D", name:"Personnage D", color:"#1e8449", bg:"#eafaf1", voiceId:"TxGEqnHWrfWFTfGW9XjX", stability:0.50, similarity:0.80, style:0.25 },
+  { id:"E", name:"Personnage E", color:"#b7770d", bg:"#fef9e7", voiceId:"AZnzlk1XvdvUeBnXmlld", stability:0.45, similarity:0.85, style:0.35 },
 ];
 
 const GK_SCRIPT = [
@@ -115,29 +107,27 @@ const GK_SCRIPT = [
   {id:75,ch:"B",text:"Très bien. Tracy, à toi..."},
   {id:76,ch:"E",text:"Ça pourrait commencer par l'assassinat d'un ancien Président. Un homme qui reçoit une balle à travers une vitre et qui s'effondre."},
   {id:77,ch:"E",text:"Dans le silence et le calme de l'appartement, le corps qui s'effondre. Et de nouveau le silence, un silence rempli de terreur. Et puis un cri, le cri déchirant de l'épouse de l'ancien Président."},
-  {id:78,ch:"E",text:"Parce qu'il est au courant, il risque de faire échouer le plan. Un plan d'entrée en guerre avec un autre pays."},
-  {id:79,ch:"E",text:"Des gens haut placés dans l'administration gouvernementale. Ou alors une cellule spéciale. Ou quelque chose de plus obscur. Une sorte de gouvernement invisible."},
-  {id:80,ch:"B",text:"Très bien. Merci, Tracy. À toi Bob, une proposition..."},
-  {id:81,ch:"C",text:"Des hauts dirigeants des services secrets fomentent un complot pour enlever le Président et le remplacer par un sosie, un certain George Kaplan. Celui-ci doit leur servir à entrer en guerre contre un pays ennemi, ce à quoi le véritable Président s'opposait."},
-  {id:82,ch:"B",text:"Très bien Bob, ça ira, merci. L'idée du sosie, très bien, une très bonne idée. John, à vous ?"},
-  {id:83,ch:"D",text:"Ça pourrait commencer avec une femme dans le désert. Le soleil qui cogne. Aucune ombre à l'horizon. Une femme seule... avec une poule."},
-  {id:84,ch:"D",text:"Et la femme tient un fusil et elle met en joue la poule. Elle n'arrive pas à se décider à tirer et ça dure longtemps. Mais elle ne tire pas, mais elle ne renonce pas à tirer non plus, elle garde son arme braquée sur la poule."},
-  {id:85,ch:"D",text:"Parce que d'un côté, elle doit tuer la poule, c'est son contrat. Mais de l'autre côté, elle ne peut pas se résoudre à tuer la poule, parce que la poule peut sauver le monde."},
-  {id:86,ch:"D",text:"Le gouvernement tente de faire croire qu'une arme de destruction massive est entre les mains d'un groupe terroriste. Mais le gouvernement perd le contrôle de cette arme, qui tombe entre les mains d'une secte de tueurs anarcho-nihilistes. Le seul moyen de désamorcer l'arme est une série de codes cachés à l'intérieur d'une poule vivante. Le sort de l'humanité repose sur le seul fait de remettre la main sur cette poule."},
-  {id:87,ch:"B",text:"George Kaplan est une arme. Je n'y avais pas pensé. C'est ingénieux."},
-  {id:88,ch:"E",text:"Un film, John, doit se construire à partir d'événements qui soient vraisemblables. Le récit, la structure narrative, étant alors une métaphore de cette vérité."},
-  {id:89,ch:"D",text:"Je crois qu'il faut en finir avec les métaphores, Tracy. Il faut en finir avec ces putains de métaphores."},
-  {id:90,ch:"E",text:"John, vous savez pourquoi nous sommes là ? Nous sommes là pour apporter des réponses à cette question : Comment un être humain doit-il mener sa vie ? C'est vers les histoires que les gens se tournent, pour trouver un sens à leur vie, pour organiser le chaos de leur existence."},
-  {id:91,ch:"B",text:"Écoutez, nous avons un cahier des charges à respecter, je veux maintenant que chacun d'entre vous élabore une ligne narrative dans laquelle George Kaplan est une menace. Allez, Peter..."},
-  {id:92,ch:"A",text:"Une organisation secrète décide de profiter de l'apparition d'une menace intérieure représentée par un terroriste qui se fait appeler George Kaplan pour pouvoir faire passer une série de lois sécuritaires."},
-  {id:93,ch:"D",text:"Un groupe d'activistes invente une identité fictive nommée George Kaplan. Cette identité, adoptée par de plus en plus d'individus à travers le monde, devient alors un phénomène global qui commence à menacer l'équilibre économique et politique mondial."},
-  {id:94,ch:"C",text:"George Kaplan est un homme ordinaire, un père de famille. Un monsieur Tout-le-monde. Il a une femme, des enfants, un travail. Et comme tout homme ordinaire, il a des problèmes."},
-  {id:95,ch:"C",text:"Il a des problèmes avec son travail, avec ses enfants, avec ses crédits... et un jour sa femme le quitte et alors George ne comprend pas... et il trouve sa vie inutile et un jour il finit par prendre une arme et il sort dans la rue et il tire sur tout ce qui bouge et... et puis il se tire une balle dans la tête."},
-  {id:96,ch:"B",text:"Merci Bob, vraiment, merci. Il y a beaucoup trop d'hommes abandonnés et de meurtres de masse dans tes histoires, ce n'est pas bon, ça, Bob, pas bon du tout."},
-  {id:97,ch:"C",text:"Nous devions partir en voyage. Le voyage de noces que nous n'avions jamais eu. Mais lorsque je suis rentré, il n'y avait que ses bagages dans le vestibule. La différence entre la réalité et la fiction, c'est que la fiction doit être cohérente."},
-  {id:98,ch:"C",text:"Et puis elle me répond : « Parce que nous ne partons pas pour la même destination. » Et là, tout à coup, c'était The Philadelphia Story. Il fallait se rendre à l'évidence : c'était très mal écrit. Cette scène, ma scène de séparation, de rupture, était vraiment très mal écrite."},
-  {id:99,ch:"C",text:"Les jours suivants, j'ai encore cherché, j'ai cherché longtemps une bonne réplique, une réplique qui percute, et rien, rien, plus rien ne venait."},
-  {id:100,ch:"C",text:"Ça c'est une bonne réplique. Une très bonne réplique."},
+  {id:78,ch:"E",text:"Des gens haut placés dans l'administration gouvernementale. Ou alors une cellule spéciale. Ou quelque chose de plus obscur. Une sorte de gouvernement invisible."},
+  {id:79,ch:"B",text:"Très bien. Merci, Tracy. À toi Bob, une proposition..."},
+  {id:80,ch:"C",text:"Des hauts dirigeants des services secrets fomentent un complot pour enlever le Président et le remplacer par un sosie, un certain George Kaplan. Celui-ci doit leur servir à entrer en guerre contre un pays ennemi, ce à quoi le véritable Président s'opposait."},
+  {id:81,ch:"B",text:"Très bien Bob, ça ira, merci. L'idée du sosie, très bien, une très bonne idée. John, à vous ?"},
+  {id:82,ch:"D",text:"Ça pourrait commencer avec une femme dans le désert. Le soleil qui cogne. Aucune ombre à l'horizon. Une femme seule... avec une poule."},
+  {id:83,ch:"D",text:"Et la femme tient un fusil et elle met en joue la poule. Elle n'arrive pas à se décider à tirer et ça dure longtemps. Mais elle ne tire pas, mais elle ne renonce pas à tirer non plus, elle garde son arme braquée sur la poule."},
+  {id:84,ch:"D",text:"Parce que d'un côté, elle doit tuer la poule, c'est son contrat. Mais de l'autre côté, elle ne peut pas se résoudre à tuer la poule, parce que la poule peut sauver le monde."},
+  {id:85,ch:"B",text:"George Kaplan est une arme. Je n'y avais pas pensé. C'est ingénieux."},
+  {id:86,ch:"E",text:"Un film, John, doit se construire à partir d'événements qui soient vraisemblables. Le récit, la structure narrative, étant alors une métaphore de cette vérité."},
+  {id:87,ch:"D",text:"Je crois qu'il faut en finir avec les métaphores, Tracy. Il faut en finir avec ces putains de métaphores."},
+  {id:88,ch:"E",text:"John, vous savez pourquoi nous sommes là ? Nous sommes là pour apporter des réponses à cette question : Comment un être humain doit-il mener sa vie ? C'est vers les histoires que les gens se tournent, pour trouver un sens à leur vie, pour organiser le chaos de leur existence."},
+  {id:89,ch:"B",text:"Écoutez, nous avons un cahier des charges à respecter, je veux maintenant que chacun d'entre vous élabore une ligne narrative dans laquelle George Kaplan est une menace. Allez, Peter..."},
+  {id:90,ch:"A",text:"Une organisation secrète décide de profiter de l'apparition d'une menace intérieure représentée par un terroriste qui se fait appeler George Kaplan pour pouvoir faire passer une série de lois sécuritaires."},
+  {id:91,ch:"D",text:"Un groupe d'activistes invente une identité fictive nommée George Kaplan. Cette identité, adoptée par de plus en plus d'individus à travers le monde, devient alors un phénomène global qui commence à menacer l'équilibre économique et politique mondial."},
+  {id:92,ch:"C",text:"George Kaplan est un homme ordinaire, un père de famille. Un monsieur Tout-le-monde. Il a une femme, des enfants, un travail. Et comme tout homme ordinaire, il a des problèmes."},
+  {id:93,ch:"C",text:"Il a des problèmes avec son travail, avec ses enfants, avec ses crédits... et un jour sa femme le quitte et alors George ne comprend pas... et il trouve sa vie inutile et un jour il finit par prendre une arme et il sort dans la rue et il tire sur tout ce qui bouge et... et puis il se tire une balle dans la tête."},
+  {id:94,ch:"B",text:"Merci Bob, vraiment, merci. Il y a beaucoup trop d'hommes abandonnés et de meurtres de masse dans tes histoires, ce n'est pas bon, ça, Bob, pas bon du tout."},
+  {id:95,ch:"C",text:"Nous devions partir en voyage. Le voyage de noces que nous n'avions jamais eu. Mais lorsque je suis rentré, il n'y avait que ses bagages dans le vestibule. La différence entre la réalité et la fiction, c'est que la fiction doit être cohérente."},
+  {id:96,ch:"C",text:"Et puis elle me répond : « Parce que nous ne partons pas pour la même destination. » Il fallait se rendre à l'évidence : c'était très mal écrit. Cette scène, ma scène de séparation, de rupture, était vraiment très mal écrite."},
+  {id:97,ch:"C",text:"Les jours suivants, j'ai encore cherché, j'ai cherché longtemps une bonne réplique, une réplique qui percute, et rien, rien, plus rien ne venait."},
+  {id:98,ch:"C",text:"Ça c'est une bonne réplique. Une très bonne réplique."},
 ];
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -165,28 +155,32 @@ function makeCloze(text, level=0.38) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   TTS — ElevenLabs
+   API CALLS — all via server functions
 ───────────────────────────────────────────────────────────────────────── */
+
+// TTS via /api/tts
 const audioCache={};
 let currentAudio=null;
 let stopTTSFlag=false;
 
-async function elevenSpeak(text,char,apiKey,onEnd){
+async function speakLine(text, char, onEnd) {
   stopTTSFlag=false;
   if(currentAudio){currentAudio.pause();currentAudio=null;}
   const cacheKey=`${char.voiceId}:${text.slice(0,60)}`;
   let audioUrl=audioCache[cacheKey];
   if(!audioUrl){
-    const res=await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${char.voiceId}/stream`,{
+    const res=await fetch("/api/tts",{
       method:"POST",
-      headers:{"xi-api-key":apiKey,"Content-Type":"application/json","Accept":"audio/mpeg"},
+      headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         text,
-        model_id:"eleven_multilingual_v2",
-        voice_settings:{stability:char.stability,similarity_boost:char.similarity,style:char.style,use_speaker_boost:true},
+        voiceId:char.voiceId,
+        stability:char.stability,
+        similarity:char.similarity,
+        style:char.style,
       }),
     });
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.detail?.message||`ElevenLabs ${res.status}`);}
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"TTS error");}
     const blob=await res.blob();
     audioUrl=URL.createObjectURL(blob);
     audioCache[cacheKey]=audioUrl;
@@ -200,73 +194,49 @@ async function elevenSpeak(text,char,apiKey,onEnd){
 }
 function stopTTS(){stopTTSFlag=true;if(currentAudio){currentAudio.pause();currentAudio=null;}}
 
-/* ─────────────────────────────────────────────────────────────────────────
-   RECORDING + OPENAI WHISPER
-───────────────────────────────────────────────────────────────────────── */
+// STT via /api/stt (ElevenLabs Scribe)
+async function transcribeAudio(blob) {
+  const arrayBuffer=await blob.arrayBuffer();
+  const base64=btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  const res=await fetch("/api/stt",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({audio:base64, mimeType:blob.type||"audio/webm"}),
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"STT error");}
+  const data=await res.json();
+  return data.text||"";
+}
+
+// Extract script from images/PDF via /api/extract (Gemini)
+async function extractScript(files, characters) {
+  const res=await fetch("/api/extract",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({files, characters}),
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"Extract error");}
+  const data=await res.json();
+  return data.lines||[];
+}
+
+// Convert file to base64
+function fileToBase64(file){
+  return new Promise((res,rej)=>{
+    const reader=new FileReader();
+    reader.onload=e=>res({
+      base64:e.target.result.split(",")[1],
+      mimeType:file.type,
+      name:file.name,
+    });
+    reader.onerror=rej;
+    reader.readAsDataURL(file);
+  });
+}
+
 function getSupportedMime(){
   return ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4","audio/wav"]
     .find(t=>MediaRecorder.isTypeSupported(t))||"";
-}
-async function transcribeWithOpenAI(blob,apiKey){
-  const ext=blob.type.includes("mp4")?"mp4":blob.type.includes("ogg")?"ogg":blob.type.includes("wav")?"wav":"webm";
-  const fd=new FormData();
-  fd.append("file",blob,`rec.${ext}`);
-  fd.append("model","whisper-1");
-  fd.append("language","fr");
-  const res=await fetch("https://api.openai.com/v1/audio/transcriptions",{
-    method:"POST",headers:{"Authorization":`Bearer ${apiKey}`},body:fd,
-  });
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`OpenAI ${res.status}`);}
-  return (await res.json()).text?.trim()||"";
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
-   PHOTO → SCRIPT  via Claude Vision
-───────────────────────────────────────────────────────────────────────── */
-async function extractScriptFromImages(imageBase64Array, anthropicKey, characters) {
-  const charList = characters.map(c=>`${c.id} = ${c.name}`).join(", ");
-  const content = [
-    ...imageBase64Array.map(b64=>({
-      type:"image",
-      source:{type:"base64",media_type:"image/jpeg",data:b64},
-    })),
-    {
-      type:"text",
-      text:`Tu es un assistant qui extrait des textes de théâtre depuis des photos de livres.
-
-Les personnages sont : ${charList}
-
-Extrait TOUTES les répliques parlées de ces images. 
-- Ignore les didascalies (textes en italique décrivant les actions/mouvements)
-- Ignore le texte barré (strikethrough)
-- Garde uniquement le texte dit à voix haute par les personnages
-
-Réponds UNIQUEMENT avec un JSON valide, sans markdown, sans explications :
-[
-  {"id": 1, "ch": "A", "text": "texte de la réplique"},
-  {"id": 2, "ch": "B", "text": "texte de la réplique"}
-]`
-    }
-  ];
-
-  const res = await fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{
-      "x-api-key": anthropicKey,
-      "anthropic-version":"2023-06-01",
-      "content-type":"application/json",
-    },
-    body:JSON.stringify({
-      model:"claude-opus-4-20250514",
-      max_tokens:4096,
-      messages:[{role:"user",content}],
-    }),
-  });
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`Claude ${res.status}`);}
-  const data=await res.json();
-  const raw=data.content[0].text.trim();
-  const clean=raw.replace(/```json|```/g,"").trim();
-  return JSON.parse(clean);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -310,7 +280,7 @@ body{background:#f6f3ee;color:#1a1a1a;font-family:'Outfit',sans-serif;min-height
 .cxl{padding:6px 0;border-bottom:1px solid #ede8e0;font-size:.86rem;line-height:1.55;display:flex;gap:8px;align-items:flex-start}
 .cxl:last-child{border-bottom:none;padding-bottom:0}
 .cxsp{font-weight:600;font-size:.67rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:1px;flex-shrink:0;padding-top:2px}
-.cxplay{background:none;border:none;cursor:pointer;opacity:.35;font-size:.85rem;padding:0 2px;flex-shrink:0;padding-top:1px;transition:opacity .15s}
+.cxplay{background:none;border:none;cursor:pointer;opacity:.35;font-size:.85rem;padding:0 2px;flex-shrink:0;transition:opacity .15s}
 .cxplay:hover{opacity:.9}
 .cue{font-size:.72rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;margin-bottom:10px}
 .sbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#eaf2f8;border-radius:8px;margin-bottom:12px;font-size:.82rem;color:#1a5276}
@@ -345,73 +315,62 @@ body{background:#f6f3ee;color:#1a1a1a;font-family:'Outfit',sans-serif;min-height
 .sbadge{display:inline-flex;align-items:center;gap:4px;background:#f5f0e8;border-radius:20px;padding:3px 11px;font-size:.75rem;font-weight:500;color:#777}
 .done-w{text-align:center;padding:30px 16px}
 .bigp{font-family:'Cormorant Garamond',serif;font-size:5rem;font-weight:600;line-height:1}
-.rply{background:none;border:none;cursor:pointer;opacity:.4;transition:opacity .14s;padding:3px 5px;font-size:.95rem;vertical-align:middle}
+.rply{background:none;border:none;cursor:pointer;opacity:.4;transition:opacity .14px;padding:3px 5px;font-size:.95rem;vertical-align:middle}
 .rply:hover{opacity:1}
 .err-banner{background:#fdedec;border:1px solid #f0b0a8;color:#7b2020;border-radius:8px;padding:10px 14px;font-size:.82rem;margin:8px 0;line-height:1.5}
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:12px 0}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin:12px 0}
 .photo-thumb{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:6px;border:2px solid #e4dfd6}
-.photo-thumb.sel{border-color:#1a1a1a}
-.tag{display:inline-flex;align-items:center;gap:4px;background:#f5f0e8;border-radius:6px;padding:3px 8px;font-size:.75rem;margin:2px}
-.tag button{background:none;border:none;cursor:pointer;color:#999;font-size:.8rem;padding:0 0 0 2px}
-.step-num{width:28px;height:28px;border-radius:50%;background:#1a1a1a;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;flex-shrink:0}
-.step-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+.file-tag{display:inline-flex;align-items:center;gap:6px;background:#f5f0e8;border-radius:6px;padding:5px 10px;font-size:.78rem;margin:3px}
+.file-tag button{background:none;border:none;cursor:pointer;color:#999;font-size:.85rem}
+.step-num{width:28px;height:28px;border-radius:50%;background:#1a1a1a;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;flex-shrink:0;margin-top:2px}
+.step-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:20px}
 .step-content{flex:1}
+.upload-zone{border:2px dashed #cec8bf;border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s}
+.upload-zone:hover{border-color:#1a1a1a;background:#f8f5f0}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.char-grid{grid-template-columns:repeat(3,1fr)}}
 `;
 
 /* ─────────────────────────────────────────────────────────────────────────
-   MAIN APP
+   COMPONENT
 ───────────────────────────────────────────────────────────────────────── */
 export default function App() {
-  // ── Keys & config
-  const [keys,     setKeys]    = useState({eleven:"",openai:"",anthropic:""});
-  const [keyDraft, setKD]      = useState({eleven:"",openai:"",anthropic:""});
+  const [screen,    setScreen]  = useState("home");
+  const [script,    setScript]  = useState(GK_SCRIPT);
+  const [chars,     setChars]   = useState(GK_CHARACTERS);
+  const [chosen,    setChosen]  = useState(null);
+  const [mode,      setMode]    = useState(null);
+  const [idx,       setIdx]     = useState(0);
+  const [feedback,  setFeed]    = useState(null);
+  const [input,     setInput]   = useState("");
+  const [score,     setScore]   = useState({ok:0,tot:0});
+  const [cloze,     setCloze]   = useState(null);
+  const [clozeA,    setClozeA]  = useState({});
 
-  // ── Screens: setup | textChoice | photoImport | charSetup | choose | mode | play | done
-  const [screen,   setScreen]  = useState("setup");
+  // Import state
+  const [importChars, setIC]    = useState(DEFAULT_CHARACTERS.map(c=>({...c})));
+  const [importFiles, setIF]    = useState([]); // [{base64, mimeType, name, url?}]
+  const [importing,   setImp]   = useState(false);
+  const [importErr,   setIErr]  = useState("");
 
-  // ── Script & characters (can be GK or custom)
-  const [script,   setScript]  = useState(GK_SCRIPT);
-  const [chars,    setChars]   = useState(GK_CHARACTERS);
-
-  // ── Photo import state
-  const [photos,   setPhotos]  = useState([]); // [{base64, url}]
-  const [photoChars, setPC]    = useState(
-    DEFAULT_CHARACTERS.map(c=>({...c,name:c.name}))
-  );
-  const [importing,setImporting]= useState(false);
-  const [importErr,setImportErr]= useState("");
-
-  // ── Game state
-  const [chosen,   setChosen]  = useState(null);
-  const [mode,     setMode]    = useState(null);
-  const [idx,      setIdx]     = useState(0);
-  const [feedback, setFeed]    = useState(null);
-  const [input,    setInput]   = useState("");
-  const [score,    setScore]   = useState({ok:0,tot:0});
-  const [cloze,    setCloze]   = useState(null);
-  const [clozeA,   setClozeA]  = useState({});
-
-  // ── Oral
-  const [oPhase,   setOP]      = useState("idle");
-  const [speakErr, setSErr]    = useState("");
-  const [recSec,   setRecSec]  = useState(0);
-  const [recBlob,  setRB]      = useState(null);
-  const [recUrl,   setRU]      = useState(null);
-  const [transcript,setTr]     = useState("");
-  const [transErr, setTE]      = useState("");
-  const [transLoad,setTL]      = useState(false);
+  // Oral state
+  const [oPhase,    setOP]      = useState("idle");
+  const [speakErr,  setSErr]    = useState("");
+  const [recSec,    setRecSec]  = useState(0);
+  const [recBlob,   setRB]      = useState(null);
+  const [recUrl,    setRU]      = useState(null);
+  const [transcript,setTr]      = useState("");
+  const [transErr,  setTE]      = useState("");
+  const [transLoad, setTL]      = useState(false);
 
   const timerRef  = useRef(null);
   const mediaRef  = useRef(null);
   const chunksRef = useRef([]);
 
-  const myLines = script.filter(l=>l.ch===chosen);
-  const getChar = id => chars.find(c=>c.id===id);
+  const getChar  = id => chars.find(c=>c.id===id);
+  const myLines  = script.filter(l=>l.ch===chosen);
 
   useEffect(()=>()=>{stopTTS();},[]);
 
-  /* ── Helpers ── */
   function getCtx(line){
     const i=script.findIndex(l=>l.id===line.id);
     const ctx=[];
@@ -448,16 +407,14 @@ export default function App() {
     async function nl(){
       if(stopTTSFlag||i>=ctx.length){if(!stopTTSFlag)setOP("waitRec");return;}
       const l=ctx[i++];
-      const ch=getChar(l.ch);
-      try{await new Promise((res,rej)=>elevenSpeak(l.text,ch,keys.eleven,res).catch(rej));nl();}
-      catch(e){setSErr("ElevenLabs : "+e.message);setOP("waitRec");}
+      try{await new Promise((res,rej)=>speakLine(l.text,getChar(l.ch),res).catch(rej));nl();}
+      catch(e){setSErr("Voix : "+e.message);setOP("waitRec");}
     }
     nl();
   }
   async function playSingle(text,charId){
-    const ch=getChar(charId);
-    try{await elevenSpeak(text,ch,keys.eleven,()=>{});}
-    catch(e){setSErr("ElevenLabs : "+e.message);}
+    try{await speakLine(text,getChar(charId),()=>{});}
+    catch(e){setSErr("Voix : "+e.message);}
   }
 
   /* ── Recording ── */
@@ -492,8 +449,8 @@ export default function App() {
   async function runTranscription(){
     if(!recBlob)return;
     setTL(true);setTE("");
-    try{const t=await transcribeWithOpenAI(recBlob,keys.openai);setTr(t);}
-    catch(e){setTE("Whisper : "+e.message);}
+    try{const t=await transcribeAudio(recBlob);setTr(t);}
+    catch(e){setTE("Transcription : "+e.message);}
     setTL(false);
   }
   function evalRec(){
@@ -516,40 +473,30 @@ export default function App() {
   function checkWrite(){
     const exp=myLines[idx].text;
     const sim=similarity(input,exp);
-    const ok=sim>0.72;
-    setScore(s=>({ok:s.ok+(ok?1:0),tot:s.tot+1}));
-    setFeed({ok,sim,expected:exp});
+    setScore(s=>({ok:s.ok+(sim>0.72?1:0),tot:s.tot+1}));
+    setFeed({ok:sim>0.72,sim,expected:exp});
   }
 
-  /* ── Photo import ── */
-  function handlePhotoSelect(e){
+  /* ── File import (photos + PDF) ── */
+  async function handleFiles(e){
     const files=Array.from(e.target.files);
-    files.forEach(file=>{
-      const reader=new FileReader();
-      reader.onload=ev=>{
-        const base64=ev.target.result.split(",")[1];
-        const url=ev.target.result;
-        setPhotos(p=>[...p,{base64,url,name:file.name}]);
-      };
-      reader.readAsDataURL(file);
-    });
+    const converted=await Promise.all(files.map(async f=>{
+      const data=await fileToBase64(f);
+      return {...data, url: f.type.startsWith("image/") ? URL.createObjectURL(f) : null};
+    }));
+    setIF(prev=>[...prev,...converted]);
   }
 
   async function runImport(){
-    if(!photos.length){setImportErr("Ajoutez au moins une photo.");return;}
-    if(!keys.anthropic){setImportErr("Clé Anthropic manquante.");return;}
-    setImporting(true);setImportErr("");
+    if(!importFiles.length){setIErr("Ajoutez au moins un fichier.");return;}
+    setImp(true);setIErr("");
     try{
-      const base64s=photos.map(p=>p.base64);
-      const lines=await extractScriptFromImages(base64s,keys.anthropic,photoChars);
-      const numbered=lines.map((l,i)=>({...l,id:i+1}));
-      setScript(numbered);
-      setChars(photoChars);
+      const lines=await extractScript(importFiles,importChars);
+      setScript(lines.map((l,i)=>({...l,id:i+1})));
+      setChars(importChars);
       setScreen("choose");
-    }catch(e){
-      setImportErr("Erreur d'extraction : "+e.message);
-    }
-    setImporting(false);
+    }catch(e){setIErr("Erreur : "+e.message);}
+    setImp(false);
   }
 
   const fmt=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
@@ -561,97 +508,50 @@ export default function App() {
   );
 
   /* ══════════════════════════════════════════════════════════════
-     SETUP
+     HOME
   ══════════════════════════════════════════════════════════════ */
-  if(screen==="setup") return(<><style>{CSS}</style>
+  if(screen==="home") return(<><style>{CSS}</style>
     <div className="app"><Mast/>
       <div className="card">
-        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.3rem",marginBottom:4}}>Configuration</h2>
-        <p style={{fontSize:".84rem",color:"#666",lineHeight:1.6,marginBottom:18}}>
-          Entrez vos clés API. Elles restent dans votre navigateur, jamais stockées.
-        </p>
-
-        {[
-          {key:"eleven",label:"ElevenLabs",hint:"Pour les voix naturelles",ph:"sk_...",link:"elevenlabs.io"},
-          {key:"openai",label:"OpenAI",hint:"Pour la transcription Whisper",ph:"sk-...",link:"platform.openai.com"},
-          {key:"anthropic",label:"Anthropic Claude",hint:"Pour lire vos photos de texte",ph:"sk-ant-...",link:"console.anthropic.com"},
-        ].map(f=>(
-          <div className="inp-row" key={f.key}>
-            <label>{f.label} <span style={{color:"#aaa",fontWeight:400}}>— {f.hint}</span></label>
-            <input className="inp" type="password" placeholder={f.ph}
-              value={keyDraft[f.key]}
-              onChange={e=>setKD(k=>({...k,[f.key]:e.target.value}))}/>
-            <p style={{fontSize:".72rem",color:"#aaa",marginTop:3}}>→ {f.link}</p>
-          </div>
-        ))}
-
-        <div className="nav" style={{flexDirection:"column",gap:8}}>
-          <button className="btn btn-dk" style={{width:"100%"}}
-            disabled={!keyDraft.eleven||!keyDraft.openai||!keyDraft.anthropic}
-            onClick={()=>{setKeys({eleven:keyDraft.eleven.trim(),openai:keyDraft.openai.trim(),anthropic:keyDraft.anthropic.trim()});setScreen("textChoice");}}>
-            Continuer avec toutes les fonctions →
-          </button>
-          <button className="btn btn-gh" style={{width:"100%"}}
-            onClick={()=>setScreen("textChoice")}>
-            Continuer sans clés (texte à trous / reconstitution uniquement)
-          </button>
-        </div>
-      </div>
-    </div>
-  </>);
-
-  /* ══════════════════════════════════════════════════════════════
-     TEXT CHOICE
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="textChoice") return(<><style>{CSS}</style>
-    <div className="app"><Mast/>
-      <div className="card">
-        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.3rem",marginBottom:16}}>Quel texte voulez-vous apprendre ?</h2>
-
+        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.3rem",marginBottom:14}}>Quel texte voulez-vous apprendre ?</h2>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div className="mtile" onClick={()=>{setScript(GK_SCRIPT);setChars(GK_CHARACTERS);setScreen("choose");}}>
             <div className="mico">📖</div>
             <div className="mtit">George Kaplan — Frédéric Sonntag</div>
             <div className="mdsc">Texte intégral déjà chargé, prêt à l'emploi</div>
           </div>
-
-          <div className="mtile" onClick={()=>{
-            if(!keys.anthropic){alert("Ajoutez une clé Anthropic dans la configuration pour utiliser cette fonction.");return;}
-            setScreen("photoImport");
-          }}>
+          <div className="mtile" onClick={()=>{setIF([]);setIErr("");setScreen("import");}}>
             <div className="mico">📷</div>
             <div className="mtit">Importer un nouveau texte</div>
-            <div className="mdsc">Photographiez les pages de votre pièce, Claude les lit et extrait les répliques automatiquement</div>
+            <div className="mdsc">Photos de pages ou fichier PDF — extraction automatique des répliques</div>
           </div>
         </div>
-
-        <div className="nav"><span className="bk" onClick={()=>setScreen("setup")}>⚙ Paramètres</span></div>
       </div>
     </div>
   </>);
 
   /* ══════════════════════════════════════════════════════════════
-     PHOTO IMPORT
+     IMPORT
   ══════════════════════════════════════════════════════════════ */
-  if(screen==="photoImport") return(<><style>{CSS}</style>
+  if(screen==="import") return(<><style>{CSS}</style>
     <div className="app"><Mast/>
       <div className="card">
-        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.25rem",marginBottom:16}}>Importer votre texte</h2>
+        <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",marginBottom:18}}>Importer votre texte</h2>
 
-        {/* Step 1: Characters */}
+        {/* Step 1 — Characters */}
         <div className="step-row">
           <div className="step-num">1</div>
           <div className="step-content">
             <p style={{fontWeight:600,fontSize:".9rem",marginBottom:10}}>Nommez vos personnages</p>
-            {photoChars.map((ch,i)=>(
-              <div key={ch.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+            {importChars.map((ch,i)=>(
+              <div key={ch.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{width:28,height:28,borderRadius:"50%",background:ch.bg,border:`2px solid ${ch.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".8rem",fontWeight:700,color:ch.color,flexShrink:0}}>{ch.id}</div>
-                <input className="inp" style={{flex:1}} placeholder={`Nom du personnage ${ch.id}`}
+                <input className="inp" style={{flex:"1 1 120px",minWidth:100}} placeholder={`Nom du personnage ${ch.id}`}
                   value={ch.name}
-                  onChange={e=>setPC(cs=>cs.map((c,j)=>j===i?{...c,name:e.target.value}:c))}/>
-                <select className="inp" style={{width:180,fontSize:".78rem"}}
+                  onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,name:e.target.value}:c))}/>
+                <select className="inp" style={{flex:"1 1 160px",minWidth:140,fontSize:".78rem"}}
                   value={ch.voiceId}
-                  onChange={e=>setPC(cs=>cs.map((c,j)=>j===i?{...c,voiceId:e.target.value}:c))}>
+                  onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,voiceId:e.target.value}:c))}>
                   {VOICE_IDS.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
                 </select>
               </div>
@@ -659,59 +559,67 @@ export default function App() {
           </div>
         </div>
 
-        {/* Step 2: Photos */}
+        {/* Step 2 — Files */}
         <div className="step-row">
           <div className="step-num">2</div>
           <div className="step-content">
-            <p style={{fontWeight:600,fontSize:".9rem",marginBottom:8}}>
-              Photographiez les pages du texte
+            <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Ajoutez vos fichiers</p>
+            <p style={{fontSize:".78rem",color:"#888",marginBottom:12,lineHeight:1.5}}>
+              Photos de pages (JPG, PNG) ou fichier PDF. Vous pouvez en ajouter plusieurs.
             </p>
-            <p style={{fontSize:".78rem",color:"#888",marginBottom:10,lineHeight:1.5}}>
-              Prenez une photo de chaque page en tenant votre téléphone bien droit. Bonne lumière, pas de flou. Plusieurs pages à la fois sont acceptées.
-            </p>
-            <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}
-              className="btn btn-gh">
-              📷 Ajouter des photos
-              <input type="file" accept="image/*" multiple capture="environment"
-                style={{display:"none"}} onChange={handlePhotoSelect}/>
+
+            <label className="upload-zone">
+              <div style={{fontSize:"2rem",marginBottom:8}}>📎</div>
+              <div style={{fontWeight:500,fontSize:".9rem"}}>Cliquez pour ajouter</div>
+              <div style={{fontSize:".75rem",color:"#aaa",marginTop:4}}>Photos ou PDF</div>
+              <input type="file" accept="image/*,.pdf,application/pdf" multiple
+                style={{display:"none"}} onChange={handleFiles}/>
             </label>
 
-            {photos.length>0&&(
-              <div className="photo-grid" style={{marginTop:12}}>
-                {photos.map((p,i)=>(
-                  <div key={i} style={{position:"relative"}}>
-                    <img src={p.url} className="photo-thumb" alt={`page ${i+1}`}/>
-                    <button onClick={()=>setPhotos(ps=>ps.filter((_,j)=>j!==i))}
-                      style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,.6)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:".7rem",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      ✕
-                    </button>
+            {importFiles.length>0&&(
+              <div style={{marginTop:12}}>
+                {/* Image previews */}
+                {importFiles.filter(f=>f.url).length>0&&(
+                  <div className="photo-grid">
+                    {importFiles.filter(f=>f.url).map((f,i)=>(
+                      <div key={i} style={{position:"relative"}}>
+                        <img src={f.url} className="photo-thumb" alt={f.name}/>
+                        <button onClick={()=>setIF(fs=>fs.filter((_,j)=>j!==i))}
+                          style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.6)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:".7rem",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      </div>
+                    ))}
                   </div>
+                )}
+                {/* PDF tags */}
+                {importFiles.filter(f=>!f.url).map((f,i)=>(
+                  <span key={i} className="file-tag">
+                    📄 {f.name}
+                    <button onClick={()=>setIF(fs=>fs.filter((_,j)=>j!==importFiles.findIndex(x=>x.name===f.name)))}>✕</button>
+                  </span>
                 ))}
+                <p style={{fontSize:".74rem",color:"#aaa",marginTop:6}}>{importFiles.length} fichier(s)</p>
               </div>
             )}
-            {photos.length>0&&<p style={{fontSize:".75rem",color:"#aaa",marginTop:6}}>{photos.length} photo(s) ajoutée(s)</p>}
           </div>
         </div>
 
-        {/* Step 3: Extract */}
+        {/* Step 3 — Extract */}
         <div className="step-row">
           <div className="step-num">3</div>
           <div className="step-content">
-            <p style={{fontWeight:600,fontSize:".9rem",marginBottom:8}}>Extraire le texte</p>
+            <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Extraire les répliques</p>
             <p style={{fontSize:".78rem",color:"#888",marginBottom:10,lineHeight:1.5}}>
-              Claude va lire vos photos, identifier les répliques de chaque personnage et ignorer les didascalies et les passages barrés.
+              Gemini va lire vos fichiers et extraire uniquement les répliques parlées, en ignorant didascalies et texte barré.
             </p>
             {importErr&&<div className="err-banner" style={{marginBottom:10}}>{importErr}</div>}
-            {importing&&<div className="wload"><div className="spin"/><span>Claude analyse vos photos…</span></div>}
-            <button className="btn btn-dk" disabled={!photos.length||importing} onClick={runImport}>
-              {importing?"Analyse en cours…":"🧠 Extraire les répliques"}
+            {importing&&<div className="wload"><div className="spin"/><span>Analyse en cours…</span></div>}
+            <button className="btn btn-dk" disabled={!importFiles.length||importing} onClick={runImport}>
+              {importing?"Analyse…":"🧠 Extraire les répliques"}
             </button>
           </div>
         </div>
 
-        <div className="nav">
-          <span className="bk" onClick={()=>setScreen("textChoice")}>← Retour</span>
-        </div>
+        <div className="nav"><span className="bk" onClick={()=>setScreen("home")}>← Retour</span></div>
       </div>
     </div>
   </>);
@@ -738,7 +646,7 @@ export default function App() {
         </div>
         <div className="nav">
           <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>Continuer →</button>
-          <span className="bk" onClick={()=>setScreen("textChoice")}>← Textes</span>
+          <span className="bk" onClick={()=>setScreen("home")}>← Textes</span>
         </div>
       </div>
     </div>
@@ -755,10 +663,10 @@ export default function App() {
           <p className="lbl" style={{color:ch.color}}>Rôle : {ch.name} — {myLines.length} répliques</p>
           <div className="mgrid">
             {[
-              {id:"oral",icon:"🎤",title:"Oral",desc:keys.eleven?"Voix ElevenLabs + enregistrement + transcription Whisper":"Enregistrement + transcription"},
-              {id:"cloze",icon:"✏️",title:"Texte à trous",desc:"Retrouvez les mots manquants"},
-              {id:"write",icon:"📝",title:"Reconstitution",desc:"Réécrivez de mémoire"},
-              {id:"review",icon:"👁️",title:"Lecture",desc:"Parcourez vos répliques dans le contexte"},
+              {id:"oral", icon:"🎤",title:"Oral",          desc:"Voix naturelles + enregistrement + transcription automatique"},
+              {id:"cloze",icon:"✏️",title:"Texte à trous",  desc:"Retrouvez les mots manquants"},
+              {id:"write",icon:"📝",title:"Reconstitution", desc:"Réécrivez de mémoire"},
+              {id:"review",icon:"👁️",title:"Lecture",       desc:"Parcourez vos répliques dans le contexte"},
             ].map(m=>(
               <div key={m.id} className="mtile" onClick={()=>startMode(m.id)}>
                 <div className="mico">{m.icon}</div>
@@ -825,7 +733,7 @@ export default function App() {
                       <div className="cxsp" style={{color:lch.color}}>{lch.name}</div>
                       <div>{l.text}</div>
                     </div>
-                    {keys.eleven&&<button className="cxplay" onClick={()=>playSingle(l.text,l.ch)}>🔊</button>}
+                    <button className="cxplay" onClick={()=>playSingle(l.text,l.ch)}>🔊</button>
                   </div>
                 );
               })}
@@ -834,13 +742,12 @@ export default function App() {
 
           <div className="cue" style={{color:ch.color}}>🎭 {ch.name} — réplique {idx+1}</div>
 
-          {/* ORAL */}
+          {/* ── ORAL ── */}
           {mode==="oral"&&(<>
             {speakErr&&<div className="err-banner">{speakErr}</div>}
             {oPhase==="idle"&&(
-              <button className="btn btn-dk" style={{width:"100%"}}
-                onClick={keys.eleven?playCtx:()=>setOP("waitRec")}>
-                {keys.eleven?(ctx.length>0?"▶ Écouter le contexte":"▶ À mon tour"):"▶ Enregistrer ma réplique"}
+              <button className="btn btn-dk" style={{width:"100%"}} onClick={playCtx}>
+                {ctx.length>0?"▶ Écouter le contexte":"▶ À mon tour"}
               </button>
             )}
             {oPhase==="speaking"&&(
@@ -876,20 +783,20 @@ export default function App() {
                     <audio src={recUrl} controls/>
                   </div>
                 )}
-                {transLoad&&<div className="wload"><div className="spin"/><span>Transcription Whisper…</span></div>}
+                {transLoad&&<div className="wload"><div className="spin"/><span>Transcription en cours…</span></div>}
                 {transcript&&!transLoad&&(
                   <div className="tbox"><span className="tbox-lbl">Transcription</span>{transcript}</div>
                 )}
                 {transErr&&<div className="err-banner">{transErr}</div>}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {!transcript&&!transLoad&&keys.openai&&(
+                  {!transcript&&!transLoad&&(
                     <button className="btn btn-dk" onClick={runTranscription}>🧠 Transcrire</button>
                   )}
                   {transcript&&<button className="btn btn-gn" onClick={evalRec}>Évaluer</button>}
                   <button className="btn btn-gn" onClick={()=>setFeed({ok:null,sim:null,expected:myLines[idx].text,selfEval:true})}>
                     ✓ Auto-évaluer
                   </button>
-                  <button className="btn btn-gh" onClick={()=>{resetOral();setOP(keys.eleven&&ctx.length>0?"idle":"waitRec");}}>Réessayer</button>
+                  <button className="btn btn-gh" onClick={()=>{resetOral();setOP("idle");}}>Réessayer</button>
                 </div>
               </div>
             )}
@@ -911,22 +818,20 @@ export default function App() {
                   <p className="fb-exp">Attendu : « {feedback.expected} »</p>
                 </div>
               )}
-              {keys.eleven&&(
-                <button className="btn btn-gh btn-sm" style={{marginTop:8}}
-                  onClick={()=>playSingle(feedback.expected,chosen)}>🔊 Écouter la version correcte</button>
-              )}
+              <button className="btn btn-gh btn-sm" style={{marginTop:8}}
+                onClick={()=>playSingle(feedback.expected,chosen)}>🔊 Écouter la version correcte</button>
               {!feedback.selfEval&&(
                 <div className="nav">
                   <button className="btn btn-dk" onClick={next} style={{flex:1}}>
                     {idx+1<myLines.length?"Réplique suivante →":"Terminer"}
                   </button>
-                  <button className="btn btn-gh btn-sm" onClick={()=>{setFeed(null);resetOral();setOP(keys.eleven&&ctx.length>0?"idle":"waitRec");}}>Réessayer</button>
+                  <button className="btn btn-gh btn-sm" onClick={()=>{setFeed(null);resetOral();}}>Réessayer</button>
                 </div>
               )}
             </>)}
           </>)}
 
-          {/* CLOZE */}
+          {/* ── CLOZE ── */}
           {mode==="cloze"&&cloze&&(<>
             <div className="cloze-wrap">
               {cloze.words.map((w,i)=>{
@@ -955,7 +860,7 @@ export default function App() {
             </div>
           </>)}
 
-          {/* WRITE */}
+          {/* ── WRITE ── */}
           {mode==="write"&&(<>
             <textarea className="warea" value={input} onChange={e=>setInput(e.target.value)}
               placeholder="Écrivez votre réplique de mémoire…" disabled={!!feedback}/>
@@ -973,11 +878,11 @@ export default function App() {
             </div>
           </>)}
 
-          {/* REVIEW */}
+          {/* ── REVIEW ── */}
           {mode==="review"&&(<>
             <div className="rev-block" style={{background:ch.bg,borderLeft:`3px solid ${ch.color}`}}>
               {line.text}
-              {keys.eleven&&<button className="rply" onClick={()=>playSingle(line.text,chosen)}>🔊</button>}
+              <button className="rply" onClick={()=>playSingle(line.text,chosen)}>🔊</button>
             </div>
             <div className="nav">
               <button className="btn btn-dk" onClick={next} style={{flex:1}}>
@@ -993,6 +898,5 @@ export default function App() {
       </div>
     </>);
   }
-
   return null;
 }
