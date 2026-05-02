@@ -3,6 +3,7 @@ export default async function handler(req, res) {
 
   const { text, voiceId, stability, similarity, style } = req.body;
   const apiKey = process.env.ELEVEN_KEY;
+  console.log("Clé reçue:", JSON.stringify(apiKey));
 
   console.log("TTS called, key exists:", !!apiKey, "voiceId:", voiceId);
 
