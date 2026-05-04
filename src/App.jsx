@@ -272,8 +272,41 @@ async function extractScript(files, characters) {
 
 function fileToBase64(file) {
   return new Promise((res, rej) => {
+    // Pour les PDFs, pas de compression possible
+    if (file.type.includes("pdf")) {
+      const reader = new FileReader();
+      reader.onload = e => res({ base64: e.target.result.split(",")[1], mimeType: file.type, name: file.name, url: null });
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Pour les images, on compresse via canvas
     const reader = new FileReader();
-    reader.onload  = e => res({ base64: e.target.result.split(",")[1], mimeType: file.type, name: file.name });
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Redimensionne à max 1200px de large
+        const maxW = 1200;
+        const scale = img.width > maxW ? maxW / img.width : 1;
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // Qualité 0.7 = bonne lisibilité, taille réduite
+        const compressed = canvas.toDataURL("image/jpeg", 0.7);
+        const base64 = compressed.split(",")[1];
+        const url = URL.createObjectURL(file);
+        res({ base64, mimeType: "image/jpeg", name: file.name, url });
+      };
+      img.onerror = rej;
+      img.src = e.target.result;
+    };
     reader.onerror = rej;
     reader.readAsDataURL(file);
   });
