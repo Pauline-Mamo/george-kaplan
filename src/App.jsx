@@ -34,7 +34,7 @@ const GK_CHARACTERS = [
 const DEFAULT_CHARACTERS = [
   { id:"A", name:"Personnage A", color:"#b03a2e", bg:"#fdf2f0", voiceId:"VR6AewLTigWG4xSOukaG", stability:0.55, similarity:0.80, style:0.20 },
   { id:"B", name:"Personnage B", color:"#1a5276", bg:"#eaf2f8", voiceId:"21m00Tcm4TlvDq8ikWAM", stability:0.65, similarity:0.85, style:0.15 },
-  { id:"C", name:"Personnage C", color:"#6c3483", bg:"#f5eef8", voiceId:"ErXwobaYiN019PkySvjV", stability:0.75, similarity:0.75, style:0.05 },
+  { id:"C", name:"Personnage C", color:"#6c3483", bg:"#f5eef8", voiceId:"pNInz4obpgDQGcFmaJgB", stability:0.75, similarity:0.75, style:0.05 },
   { id:"D", name:"Personnage D", color:"#1e8449", bg:"#eafaf1", voiceId:"TxGEqnHWrfWFTfGW9XjX", stability:0.50, similarity:0.80, style:0.25 },
   { id:"E", name:"Personnage E", color:"#b7770d", bg:"#fef9e7", voiceId:"AZnzlk1XvdvUeBnXmlld", stability:0.45, similarity:0.85, style:0.35 },
 ];
