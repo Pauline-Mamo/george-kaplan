@@ -156,160 +156,149 @@ function makeCloze(text, level=0.38) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   TTS — via /api/tts (ElevenLabs, server-side key)
+   IMAGE COMPRESSION
+───────────────────────────────────────────────────────────────────────── */
+function compressImage(file, maxWidth=800, quality=0.65) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve({
+          base64: dataUrl.split(",")[1],
+          mimeType: "image/jpeg",
+          name: file.name,
+          url: URL.createObjectURL(file),
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   GEMINI — called directly from browser (no Vercel size limit)
+───────────────────────────────────────────────────────────────────────── */
+async function extractScriptWithGemini(files, characters) {
+  const apiKey = import.meta.env.VITE_GEMINI_KEY;
+  if (!apiKey) throw new Error("Clé Gemini manquante — ajoutez VITE_GEMINI_KEY dans Vercel");
+
+  const charList = characters.map(c=>`${c.id} = ${c.name}`).join(", ");
+
+  const parts = files.map(f => ({
+    inline_data: { mime_type: f.mimeType, data: f.base64 }
+  }));
+
+  parts.push({
+    text: `Tu es un assistant qui extrait des textes de théâtre depuis des photos.
+Les personnages sont : ${charList}
+Extrait UNIQUEMENT les répliques dites à voix haute par les personnages.
+Ignore les didascalies (italique), le texte barré, et les numéros de page.
+Réponds UNIQUEMENT avec du JSON valide, sans markdown, sans backticks :
+[{"id":1,"ch":"A","text":"texte"},{"id":2,"ch":"B","text":"texte"}]`
+  });
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err?.error?.message || `Gemini error ${res.status}`);
+  }
+
+  const data = await res.json();
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  const clean = raw.replace(/```json|```/g,"").trim();
+  return JSON.parse(clean);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TTS — via /api/tts server function
 ───────────────────────────────────────────────────────────────────────── */
 const audioCache = {};
-let currentAudio = null;
-let stopTTSFlag  = false;
+let _currentAudio = null;
+let _stopFlag = false;
 
-function stopTTS() {
-  stopTTSFlag = true;
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio.src = "";
-    currentAudio = null;
+function stopAllAudio() {
+  _stopFlag = true;
+  if (_currentAudio) {
+    _currentAudio.pause();
+    _currentAudio.src = "";
+    _currentAudio = null;
   }
 }
 
-async function speakLine(text, char) {
-  // Stop any playing audio first
-  stopTTSFlag = false;
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio.src = "";
-    currentAudio = null;
-  }
-
+async function fetchAndPlayLine(text, char) {
   const cacheKey = `${char.voiceId}:${text.slice(0,80)}`;
-  let audioUrl = audioCache[cacheKey];
+  let url = audioCache[cacheKey];
 
-  if (!audioUrl) {
+  if (!url) {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
-        voiceId:    char.voiceId,
-        stability:  char.stability,
+        voiceId: char.voiceId,
+        stability: char.stability,
         similarity: char.similarity,
-        style:      char.style,
+        style: char.style,
       }),
     });
     if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error || "TTS error");
+      const e = await res.json().catch(()=>({}));
+      throw new Error(e.error || `TTS ${res.status}`);
     }
     const blob = await res.blob();
-    audioUrl = URL.createObjectURL(blob);
-    audioCache[cacheKey] = audioUrl;
+    url = URL.createObjectURL(blob);
+    audioCache[cacheKey] = url;
   }
 
-  if (stopTTSFlag) return;
+  if (_stopFlag) return;
 
-  // Play and wait for completion
   await new Promise((resolve, reject) => {
-    const audio = new Audio(audioUrl);
-    currentAudio = audio;
-    audio.onended  = () => { currentAudio = null; resolve(); };
-    audio.onerror  = () => { currentAudio = null; reject(new Error("Audio playback error")); };
+    const audio = new Audio(url);
+    _currentAudio = audio;
+    audio.onended = () => { _currentAudio = null; resolve(); };
+    audio.onerror = () => { _currentAudio = null; reject(new Error("Audio error")); };
     audio.play().catch(reject);
   });
 }
 
-async function playCtxLines(ctxLines, getCharFn, onDone, onError) {
-  for (let i = 0; i < ctxLines.length; i++) {
-    if (stopTTSFlag) break;
-    const l = ctxLines[i];
-    try {
-      await speakLine(l.text, getCharFn(l.ch));
-      // Natural pause between lines
-      if (i < ctxLines.length - 1 && !stopTTSFlag) {
-        await new Promise(r => setTimeout(r, 400));
-      }
-    } catch(e) {
-      onError(e.message);
-      return;
-    }
-  }
-  if (!stopTTSFlag) onDone();
-}
-
 /* ─────────────────────────────────────────────────────────────────────────
-   STT — via /api/stt (ElevenLabs Scribe, server-side key)
+   STT — via /api/stt server function
 ───────────────────────────────────────────────────────────────────────── */
-async function transcribeAudio(blob) {
-  const arrayBuffer = await blob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+async function transcribeBlob(blob) {
+  const ab = await blob.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
   const res = await fetch("/api/stt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ audio: base64, mimeType: blob.type || "audio/webm" }),
   });
   if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error || "STT error");
+    const e = await res.json().catch(()=>({}));
+    throw new Error(e.error || `STT ${res.status}`);
   }
-  const data = await res.json();
-  return data.text || "";
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
-   EXTRACT — via /api/extract (Gemini, server-side key)
-───────────────────────────────────────────────────────────────────────── */
-async function extractScript(files, characters) {
-  const res = await fetch("/api/extract", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ files, characters }),
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error || "Extract error");
-  }
-  const data = await res.json();
-  return data.lines || [];
-}
-
-function fileToBase64(file) {
-  return new Promise((res, rej) => {
-    // Pour les PDFs, pas de compression possible
-    if (file.type.includes("pdf")) {
-      const reader = new FileReader();
-      reader.onload = e => res({ base64: e.target.result.split(",")[1], mimeType: file.type, name: file.name, url: null });
-      reader.onerror = rej;
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    // Pour les images, on compresse via canvas
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        // Redimensionne à max 1200px de large
-        const maxW = 1200;
-        const scale = img.width > maxW ? maxW / img.width : 1;
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, w, h);
-
-        // Qualité 0.7 = bonne lisibilité, taille réduite
-        const compressed = canvas.toDataURL("image/jpeg", 0.7);
-        const base64 = compressed.split(",")[1];
-        const url = URL.createObjectURL(file);
-        res({ base64, mimeType: "image/jpeg", name: file.name, url });
-      };
-      img.onerror = rej;
-      img.src = e.target.result;
-    };
-    reader.onerror = rej;
-    reader.readAsDataURL(file);
-  });
+  return (await res.json()).text || "";
 }
 
 function getSupportedMime() {
@@ -430,8 +419,9 @@ export default function App() {
   const [importing,   setImp]   = useState(false);
   const [importErr,   setIErr]  = useState("");
 
-  // Oral
+  // Oral state
   const [oPhase,    setOP]      = useState("idle");
+  // idle | loading | speaking | waitRec | recording | recDone
   const [speakErr,  setSErr]    = useState("");
   const [recSec,    setRecSec]  = useState(0);
   const [recBlob,   setRB]      = useState(null);
@@ -440,14 +430,15 @@ export default function App() {
   const [transErr,  setTE]      = useState("");
   const [transLoad, setTL]      = useState(false);
 
-  const timerRef  = useRef(null);
-  const mediaRef  = useRef(null);
-  const chunksRef = useRef([]);
+  const timerRef   = useRef(null);
+  const mediaRef   = useRef(null);
+  const chunksRef  = useRef([]);
+  const stopRef    = useRef(false); // controls ctx playback loop
 
   const getChar  = id => chars.find(c => c.id === id);
   const myLines  = script.filter(l => l.ch === chosen);
 
-  useEffect(() => () => { stopTTS(); }, []);
+  useEffect(() => () => { stopAllAudio(); }, []);
 
   function getCtx(line) {
     const i = script.findIndex(l => l.id === line.id);
@@ -460,44 +451,71 @@ export default function App() {
   }
 
   function resetOral() {
+    stopAllAudio();
+    stopRef.current = true;
     setOP("idle"); setSErr(""); setRecSec(0);
     setRB(null); setRU(null); setTr(""); setTE(""); setTL(false);
   }
 
   function startMode(m) {
-    stopTTS(); stopRec();
+    resetOral(); stopRec();
     setMode(m); setIdx(0); setFeed(null); setInput("");
-    setScore({ok:0,tot:0}); resetOral();
+    setScore({ok:0,tot:0});
     if (m==="cloze") { setCloze(makeCloze(myLines[0]?.text||"")); setClozeA({}); }
     setScreen("play");
   }
 
   function next() {
-    stopTTS(); stopRec();
+    resetOral(); stopRec();
     const n = idx + 1;
     if (n >= myLines.length) { setScreen("done"); return; }
-    setIdx(n); setFeed(null); setInput(""); resetOral();
+    setIdx(n); setFeed(null); setInput("");
     if (mode==="cloze") { setCloze(makeCloze(myLines[n].text)); setClozeA({}); }
   }
 
-  /* ── TTS ── */
-  function handlePlayCtx() {
+  /* ── Context playback ── */
+  async function handlePlayCtx() {
     const line = myLines[idx]; if (!line) return;
     const ctx = getCtx(line);
     if (!ctx.length) { setOP("waitRec"); return; }
-    setOP("speaking"); setSErr("");
-    playCtxLines(
-      ctx,
-      getChar,
-      () => setOP("waitRec"),
-      (err) => { setSErr("Voix : " + err); setOP("waitRec"); }
-    );
+
+    stopRef.current = false;
+    _stopFlag = false;
+    setOP("loading"); setSErr("");
+
+    try {
+      // Pre-fetch all audio first
+      for (const l of ctx) {
+        if (stopRef.current) return;
+        await fetchAndPlayLine(l.text, getChar(l.ch));
+        if (stopRef.current) return;
+        await new Promise(r => setTimeout(r, 400));
+      }
+      if (!stopRef.current) setOP("waitRec");
+    } catch(e) {
+      if (!stopRef.current) {
+        setSErr("Voix : " + e.message);
+        setOP("waitRec");
+      }
+    }
+  }
+
+  // Start speaking and update phase to "speaking" after first audio starts
+  async function startCtxPlayback() {
+    await handlePlayCtx();
+  }
+
+  function handleClickPlayCtx() {
+    setOP("speaking");
+    startCtxPlayback();
   }
 
   async function playSingle(text, charId) {
-    stopTTS();
-    await new Promise(r => setTimeout(r, 100));
-    try { await speakLine(text, getChar(charId)); }
+    stopAllAudio();
+    stopRef.current = false;
+    _stopFlag = false;
+    await new Promise(r => setTimeout(r, 80));
+    try { await fetchAndPlayLine(text, getChar(charId)); }
     catch(e) { setSErr("Voix : " + e.message); }
   }
 
@@ -508,7 +526,7 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia({audio:true});
       chunksRef.current = [];
       const mime = getSupportedMime();
-      const mr = new MediaRecorder(stream, mime ? {mimeType:mime} : {});
+      const mr = new MediaRecorder(stream, mime?{mimeType:mime}:{});
       mediaRef.current = mr;
       mr.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data); };
       mr.start(200);
@@ -519,10 +537,10 @@ export default function App() {
   }
 
   function stopRec() {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current=null; }
     if (mediaRef.current?.state !== "inactive") {
-      try { mediaRef.current?.stop(); } catch(e) {}
-      mediaRef.current?.stream?.getTracks().forEach(t => t.stop());
+      try { mediaRef.current?.stop(); } catch(e){}
+      mediaRef.current?.stream?.getTracks().forEach(t=>t.stop());
     }
   }
 
@@ -538,7 +556,7 @@ export default function App() {
   async function runTranscription() {
     if (!recBlob) return;
     setTL(true); setTE("");
-    try { const t = await transcribeAudio(recBlob); setTr(t); }
+    try { const t = await transcribeBlob(recBlob); setTr(t); }
     catch(e) { setTE("Transcription : " + e.message); }
     setTL(false);
   }
@@ -554,7 +572,7 @@ export default function App() {
   /* ── Cloze / Write ── */
   function checkCloze() {
     if (!cloze) return;
-    let c = 0;
+    let c=0;
     Object.entries(cloze.blanks).forEach(([i,w]) => { if(similarity(clozeA[i]||"",w)>0.78) c++; });
     const tot = Object.keys(cloze.blanks).length;
     setScore(s => ({ok:s.ok+(c===tot?1:0), tot:s.tot+1}));
@@ -568,30 +586,28 @@ export default function App() {
     setFeed({ok:sim>0.72, sim, expected:exp});
   }
 
-  /* ── File import ── */
+  /* ── Import ── */
   async function handleFiles(e) {
     const files = Array.from(e.target.files);
-    const converted = await Promise.all(files.map(async f => {
-      const data = await fileToBase64(f);
-      return {...data, url: f.type.startsWith("image/") ? URL.createObjectURL(f) : null};
-    }));
+    setIErr("");
+    const converted = await Promise.all(files.map(f => compressImage(f)));
     setIF(prev => [...prev, ...converted]);
   }
 
   async function runImport() {
-    if (!importFiles.length) { setIErr("Ajoutez au moins un fichier."); return; }
+    if (!importFiles.length) { setIErr("Ajoutez au moins une photo."); return; }
     setImp(true); setIErr("");
     try {
-      const lines = await extractScript(importFiles, importChars);
+      const lines = await extractScriptWithGemini(importFiles, importChars);
       setScript(lines.map((l,i) => ({...l, id:i+1})));
       setChars(importChars);
+      setChosen(null);
       setScreen("choose");
     } catch(e) { setIErr("Erreur : " + e.message); }
     setImp(false);
   }
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-
   const Mast = () => (
     <div className="mast">
       <h1>Théâtre</h1>
@@ -613,7 +629,7 @@ export default function App() {
           <div className="mtile" onClick={()=>{setIF([]);setIErr("");setScreen("import");}}>
             <div className="mico">📷</div>
             <div className="mtit">Importer un nouveau texte</div>
-            <div className="mdsc">Photos de pages ou fichier PDF — extraction automatique des répliques</div>
+            <div className="mdsc">Photographiez les pages — extraction automatique des répliques</div>
           </div>
         </div>
       </div>
@@ -633,9 +649,9 @@ export default function App() {
             {importChars.map((ch,i) => (
               <div key={ch.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{width:28,height:28,borderRadius:"50%",background:ch.bg,border:`2px solid ${ch.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".8rem",fontWeight:700,color:ch.color,flexShrink:0}}>{ch.id}</div>
-                <input className="inp" style={{flex:"1 1 120px",minWidth:100}} placeholder={`Nom ${ch.id}`}
+                <input className="inp" style={{flex:"1 1 100px",minWidth:80}} placeholder={`Nom ${ch.id}`}
                   value={ch.name} onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,name:e.target.value}:c))}/>
-                <select className="inp" style={{flex:"1 1 160px",minWidth:140,fontSize:".78rem"}}
+                <select className="inp" style={{flex:"1 1 150px",minWidth:130,fontSize:".78rem"}}
                   value={ch.voiceId} onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,voiceId:e.target.value}:c))}>
                   {VOICE_IDS.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
                 </select>
@@ -647,35 +663,29 @@ export default function App() {
         <div className="step-row">
           <div className="step-num">2</div>
           <div className="step-content">
-            <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Ajoutez vos fichiers</p>
-            <p style={{fontSize:".78rem",color:"#888",marginBottom:12,lineHeight:1.5}}>Photos (JPG, PNG) ou PDF. Plusieurs fichiers acceptés.</p>
+            <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Photographiez les pages</p>
+            <p style={{fontSize:".78rem",color:"#888",marginBottom:12,lineHeight:1.5}}>
+              Prenez une photo de chaque page. Les images sont compressées automatiquement avant envoi.
+            </p>
             <label className="upload-zone">
-              <div style={{fontSize:"2rem",marginBottom:8}}>📎</div>
-              <div style={{fontWeight:500,fontSize:".9rem"}}>Cliquez pour ajouter</div>
-              <div style={{fontSize:".75rem",color:"#aaa",marginTop:4}}>Photos ou PDF</div>
-              <input type="file" accept="image/*,.pdf,application/pdf" multiple style={{display:"none"}} onChange={handleFiles}/>
+              <div style={{fontSize:"2rem",marginBottom:8}}>📷</div>
+              <div style={{fontWeight:500,fontSize:".9rem"}}>Ajouter des photos</div>
+              <div style={{fontSize:".75rem",color:"#aaa",marginTop:4}}>JPG, PNG</div>
+              <input type="file" accept="image/*" multiple capture="environment"
+                style={{display:"none"}} onChange={handleFiles}/>
             </label>
             {importFiles.length>0&&(
-              <div style={{marginTop:12}}>
-                {importFiles.filter(f=>f.url).length>0&&(
-                  <div className="photo-grid">
-                    {importFiles.filter(f=>f.url).map((f,i)=>(
-                      <div key={i} style={{position:"relative"}}>
-                        <img src={f.url} className="photo-thumb" alt={f.name}/>
-                        <button onClick={()=>setIF(fs=>fs.filter((_,j)=>j!==i))}
-                          style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.6)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:".7rem",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                      </div>
-                    ))}
+              <div className="photo-grid" style={{marginTop:12}}>
+                {importFiles.map((f,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={f.url} className="photo-thumb" alt={f.name}/>
+                    <button onClick={()=>setIF(fs=>fs.filter((_,j)=>j!==i))}
+                      style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.6)",border:"none",color:"#fff",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:".7rem",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                   </div>
-                )}
-                {importFiles.filter(f=>!f.url).map((f,i)=>(
-                  <span key={i} className="file-tag">📄 {f.name}
-                    <button onClick={()=>setIF(fs=>fs.filter(x=>x.name!==f.name))}>✕</button>
-                  </span>
                 ))}
-                <p style={{fontSize:".74rem",color:"#aaa",marginTop:6}}>{importFiles.length} fichier(s)</p>
               </div>
             )}
+            {importFiles.length>0&&<p style={{fontSize:".74rem",color:"#aaa",marginTop:6}}>{importFiles.length} photo(s)</p>}
           </div>
         </div>
 
@@ -683,6 +693,9 @@ export default function App() {
           <div className="step-num">3</div>
           <div className="step-content">
             <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Extraire les répliques</p>
+            <p style={{fontSize:".78rem",color:"#888",marginBottom:10,lineHeight:1.5}}>
+              Gemini lit vos photos et extrait automatiquement les répliques.
+            </p>
             {importErr&&<div className="err-banner" style={{marginBottom:10}}>{importErr}</div>}
             {importing&&<div className="wload"><div className="spin"/><span>Analyse en cours…</span></div>}
             <button className="btn btn-dk" disabled={!importFiles.length||importing} onClick={runImport}>
@@ -696,7 +709,7 @@ export default function App() {
     </div>
   </>);
 
-  /* ══════════ CHOOSE CHARACTER ══════════ */
+  /* ══════════ CHOOSE ══════════ */
   if (screen==="choose") return (<><style>{CSS}</style>
     <div className="app"><Mast/>
       <div className="card">
@@ -715,16 +728,14 @@ export default function App() {
           })}
         </div>
         <div className="nav">
-          <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>
-            Continuer →
-          </button>
+          <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>Continuer →</button>
           <span className="bk" onClick={()=>setScreen("home")}>← Textes</span>
         </div>
       </div>
     </div>
   </>);
 
-  /* ══════════ CHOOSE MODE ══════════ */
+  /* ══════════ MODE ══════════ */
   if (screen==="mode") {
     const ch = getChar(chosen);
     return (<><style>{CSS}</style>
@@ -813,17 +824,19 @@ export default function App() {
             {speakErr&&<div className="err-banner">{speakErr}</div>}
 
             {oPhase==="idle"&&(
-              <button className="btn btn-dk" style={{width:"100%"}} onClick={handlePlayCtx}>
+              <button className="btn btn-dk" style={{width:"100%"}} onClick={handleClickPlayCtx}>
                 {ctx.length>0?"▶ Écouter le contexte":"▶ À mon tour"}
               </button>
             )}
 
-            {oPhase==="speaking"&&(
+            {(oPhase==="speaking"||oPhase==="loading")&&(
               <div className="sbar">
                 <div className="dots"><span/><span/><span/></div>
-                Lecture en cours…
+                {oPhase==="loading"?"Chargement des voix…":"Lecture en cours…"}
                 <button className="btn btn-gh btn-sm" style={{marginLeft:"auto"}}
-                  onClick={()=>{stopTTS();setOP("waitRec");}}>Passer</button>
+                  onClick={()=>{stopRef.current=true;stopAllAudio();setOP("waitRec");}}>
+                  Passer
+                </button>
               </div>
             )}
 
@@ -891,7 +904,7 @@ export default function App() {
                 </div>
               )}
               <button className="btn btn-gh btn-sm" style={{marginTop:8}}
-                onClick={()=>{stopTTS();playSingle(feedback.expected,chosen);}}>
+                onClick={()=>{stopAllAudio();playSingle(feedback.expected,chosen);}}>
                 🔊 Écouter la version correcte
               </button>
               {!feedback.selfEval&&(
@@ -956,7 +969,7 @@ export default function App() {
           {mode==="review"&&(<>
             <div className="rev-block" style={{background:ch.bg,borderLeft:`3px solid ${ch.color}`}}>
               {line.text}
-              <button className="rply" onClick={()=>{stopTTS();playSingle(line.text,chosen);}}>🔊</button>
+              <button className="rply" onClick={()=>{stopAllAudio();playSingle(line.text,chosen);}}>🔊</button>
             </div>
             <div className="nav">
               <button className="btn btn-dk" onClick={next} style={{flex:1}}>
@@ -966,7 +979,7 @@ export default function App() {
           </>)}
 
           <div className="nav" style={{marginTop:4}}>
-            <span className="bk" onClick={()=>{stopTTS();stopRec();setScreen("mode");}}>← Mode</span>
+            <span className="bk" onClick={()=>{resetOral();stopRec();setScreen("mode");}}>← Mode</span>
           </div>
         </div>
       </div>
