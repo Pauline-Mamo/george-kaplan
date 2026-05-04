@@ -474,33 +474,69 @@ export default function App() {
   }
 
   /* ── Context playback ── */
-  async function handlePlayCtx() {
-    const line = myLines[idx]; if (!line) return;
-    const ctx = getCtx(line);
-    if (!ctx.length) { setOP("waitRec"); return; }
+async function handlePlayCtx() {
+  const line = myLines[idx]; if (!line) return;
+  const ctx = getCtx(line);
+  if (!ctx.length) { setOP("waitRec"); return; }
 
-    stopRef.current = false;
-    _stopFlag = false;
-    setOP("loading"); setSErr("");
+  stopRef.current = false;
+  _stopFlag = false;
+  setOP("loading"); setSErr("");
 
-    try {
-      // Pre-fetch all audio first
-      for (const l of ctx) {
-        if (stopRef.current) return;
-        await fetchAndPlayLine(l.text, getChar(l.ch));
-        if (stopRef.current) return;
-        await new Promise(r => setTimeout(r, 400));
+  try {
+    // Télécharge TOUTES les voix en parallèle
+    const audioUrls = await Promise.all(ctx.map(async l => {
+      const char = getChar(l.ch);
+      const cacheKey = `${char.voiceId}:${l.text.slice(0,80)}`;
+      if (audioCache[cacheKey]) return audioCache[cacheKey];
+
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: l.text,
+          voiceId: char.voiceId,
+          stability: char.stability,
+          similarity: char.similarity,
+          style: char.style,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(()=>({}));
+        throw new Error(e.error || `TTS ${res.status}`);
       }
-      if (!stopRef.current) setOP("waitRec");
-    } catch(e) {
-      if (!stopRef.current) {
-        setSErr("Voix : " + e.message);
-        setOP("waitRec");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioCache[cacheKey] = url;
+      return url;
+    }));
+
+    if (stopRef.current) return;
+
+    // Joue les voix en séquence maintenant qu'elles sont toutes prêtes
+    setOP("speaking");
+    for (let i = 0; i < audioUrls.length; i++) {
+      if (stopRef.current) break;
+      await new Promise((resolve, reject) => {
+        const audio = new Audio(audioUrls[i]);
+        _currentAudio = audio;
+        audio.onended = () => { _currentAudio = null; resolve(); };
+        audio.onerror = () => { _currentAudio = null; reject(new Error("Audio error")); };
+        audio.play().catch(reject);
+      });
+      if (i < audioUrls.length - 1 && !stopRef.current) {
+        await new Promise(r => setTimeout(r, 300));
       }
     }
-  }
+    if (!stopRef.current) setOP("waitRec");
 
-  // Start speaking and update phase to "speaking" after first audio starts
+  } catch(e) {
+    if (!stopRef.current) {
+      setSErr("Voix : " + e.message);
+      setOP("waitRec");
+    }
+  }
+}
   async function startCtxPlayback() {
     await handlePlayCtx();
   }
