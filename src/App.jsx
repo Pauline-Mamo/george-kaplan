@@ -752,30 +752,64 @@ async function handlePlayCtx() {
   </>);
 
   /* ══════════ CHOOSE ══════════ */
-  if (screen==="choose") return (<><style>{CSS}</style>
-    <div className="app"><Mast/>
-      <div className="card">
-        <p className="lbl">Choisissez votre personnage</p>
-        <div className="char-grid">
-          {chars.map(ch => {
-            const count = script.filter(l=>l.ch===ch.id).length;
-            return (
-              <div key={ch.id} className={`ctile${chosen===ch.id?" sel":""}`}
-                style={{background:ch.bg,color:ch.color}} onClick={()=>setChosen(ch.id)}>
-                <div className="ci">{ch.id}</div>
-                <div className="cn">{ch.name}</div>
-                <div className="cc">{count} répliques</div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="nav">
-          <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>Continuer →</button>
-          <span className="bk" onClick={()=>setScreen("home")}>← Textes</span>
-        </div>
+if (screen==="choose") return (<><style>{CSS}</style>
+  <div className="app"><Mast/>
+    <div className="card">
+      <p className="lbl">Choisissez votre personnage</p>
+      <div className="char-grid">
+        {chars.map(ch => {
+          const count = script.filter(l=>l.ch===ch.id).length;
+          return (
+            <div key={ch.id} className={`ctile${chosen===ch.id?" sel":""}`}
+              style={{background:ch.bg,color:ch.color}} onClick={()=>setChosen(ch.id)}>
+              <div className="ci">{ch.id}</div>
+              <div className="cn">{ch.name}</div>
+              <div className="cc">{count} répliques</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Config voix */}
+      <div style={{marginTop:20,borderTop:"1px solid #ede8e0",paddingTop:16}}>
+        <p className="lbl" style={{marginBottom:10}}>⚙ Voix des personnages</p>
+        {chars.map((ch,i) => (
+          <div key={ch.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:ch.bg,border:`2px solid ${ch.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".8rem",fontWeight:700,color:ch.color,flexShrink:0}}>{ch.id}</div>
+            <span style={{fontSize:".82rem",fontWeight:500,minWidth:50,color:ch.color}}>{ch.name}</span>
+            <select className="inp" style={{flex:1,fontSize:".78rem",minWidth:160}}
+              value={ch.voiceId}
+              onChange={e=>{
+                const newVoiceId = e.target.value;
+                // Clear cache for this character
+                Object.keys(audioCache).forEach(k=>{
+                  if(k.startsWith(ch.voiceId)) delete audioCache[k];
+                });
+                setChars(cs=>cs.map((c,j)=>j===i?{...c,voiceId:newVoiceId}:c));
+              }}>
+              {VOICE_IDS.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
+            </select>
+            <button className="btn btn-gh btn-sm"
+              onClick={async()=>{
+                stopAllAudio();
+                await new Promise(r=>setTimeout(r,80));
+                try{
+                  await fetchAndPlayLine("Bonjour, je suis " + ch.name, ch);
+                }catch(e){}
+              }}>
+              🔊 Test
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="nav">
+        <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>Continuer →</button>
+        <span className="bk" onClick={()=>setScreen("home")}>← Textes</span>
       </div>
     </div>
-  </>);
+  </div>
+</>);
 
   /* ══════════ MODE ══════════ */
   if (screen==="mode") {
