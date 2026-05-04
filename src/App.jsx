@@ -398,19 +398,28 @@ export default function App() {
   }
 
   /* ── TTS ── */
-  async function playCtx(){
+ async function playCtx(){
     const line=myLines[idx];if(!line)return;
     const ctx=getCtx(line);
     if(!ctx.length){setOP("waitRec");return;}
     setOP("speaking");setSErr("");
-    let i=0;
-    async function nl(){
-      if(stopTTSFlag||i>=ctx.length){if(!stopTTSFlag)setOP("waitRec");return;}
-      const l=ctx[i++];
-      try{await new Promise((res,rej)=>speakLine(l.text,getChar(l.ch),res).catch(rej));nl();}
-      catch(e){setSErr("Voix : "+e.message);setOP("waitRec");}
+    
+    for(let i=0;i<ctx.length;i++){
+      if(stopTTSFlag) break;
+      const l=ctx[i];
+      try{
+        await new Promise((res,rej)=>{
+          speakLine(l.text,getChar(l.ch),res).catch(rej);
+        });
+        // Petite pause naturelle entre les répliques
+        if(i<ctx.length-1) await new Promise(r=>setTimeout(r,300));
+      }catch(e){
+        setSErr("Voix : "+e.message);
+        setOP("waitRec");
+        return;
+      }
     }
-    nl();
+    if(!stopTTSFlag) setOP("waitRec");
   }
 async function playSingle(text,charId){
     stopTTS();
