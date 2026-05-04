@@ -484,50 +484,56 @@ async function handlePlayCtx() {
   setOP("loading"); setSErr("");
 
   try {
-    // Télécharge TOUTES les voix en parallèle
-    const audioUrls = await Promise.all(ctx.map(async l => {
+    // Télécharge et joue séquentiellement
+    // mais démarre immédiatement dès que le premier audio est prêt
+    for (let i = 0; i < ctx.length; i++) {
+      if (stopRef.current) return;
+
+      const l = ctx[i];
       const char = getChar(l.ch);
       const cacheKey = `${char.voiceId}:${l.text.slice(0,80)}`;
-      if (audioCache[cacheKey]) return audioCache[cacheKey];
 
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: l.text,
-          voiceId: char.voiceId,
-          stability: char.stability,
-          similarity: char.similarity,
-          style: char.style,
-        }),
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(()=>({}));
-        throw new Error(e.error || `TTS ${res.status}`);
+      // Télécharge si pas en cache
+      if (!audioCache[cacheKey]) {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: l.text,
+            voiceId: char.voiceId,
+            stability: char.stability,
+            similarity: char.similarity,
+            style: char.style,
+          }),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(()=>({}));
+          throw new Error(e.error || `TTS ${res.status}`);
+        }
+        const blob = await res.blob();
+        audioCache[cacheKey] = URL.createObjectURL(blob);
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      audioCache[cacheKey] = url;
-      return url;
-    }));
 
-    if (stopRef.current) return;
+      if (stopRef.current) return;
 
-    // Joue les voix en séquence maintenant qu'elles sont toutes prêtes
-    setOP("speaking");
-    for (let i = 0; i < audioUrls.length; i++) {
-      if (stopRef.current) break;
+      // Dès le premier audio prêt, passe en mode "speaking"
+      if (i === 0) setOP("speaking");
+
+      // Joue l'audio
       await new Promise((resolve, reject) => {
-        const audio = new Audio(audioUrls[i]);
+        const audio = new Audio(audioCache[cacheKey]);
         _currentAudio = audio;
         audio.onended = () => { _currentAudio = null; resolve(); };
         audio.onerror = () => { _currentAudio = null; reject(new Error("Audio error")); };
         audio.play().catch(reject);
       });
-      if (i < audioUrls.length - 1 && !stopRef.current) {
-        await new Promise(r => setTimeout(r, 300));
+
+      // Pause naturelle entre les répliques
+      if (i < ctx.length - 1 && !stopRef.current) {
+        await new Promise(r => setTimeout(r, 350));
       }
     }
+
     if (!stopRef.current) setOP("waitRec");
 
   } catch(e) {
