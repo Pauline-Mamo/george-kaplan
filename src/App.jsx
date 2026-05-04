@@ -4,15 +4,27 @@ import { useState, useEffect, useRef } from "react";
    CHARACTERS
 ───────────────────────────────────────────────────────────────────────── */
 const VOICE_IDS = [
-  { id:"VR6AewLTigWG4xSOukaG", label:"Arnold — grave, masculin" },
-  { id:"21m00Tcm4TlvDq8ikWAM", label:"Rachel — claire, féminine" },
-  { id:"ErXwobaYiN019PkySvjV", label:"Antoni — posé, masculin" },
-  { id:"TxGEqnHWrfWFTfGW9XjX", label:"Josh — jeune, masculin" },
-  { id:"AZnzlk1XvdvUeBnXmlld", label:"Domi — dynamique, féminine" },
-  { id:"EXAVITQu4vr4xnSDxMaL", label:"Bella — douce, féminine" },
-  { id:"pNInz4obpgDQGcFmaJgB", label:"Adam — profond, masculin" },
+  { id:"21m00Tcm4TlvDq8ikWAM", label:"Rachel — féminine, claire" },
+  { id:"AZnzlk1XvdvUeBnXmlld", label:"Domi — féminine, dynamique" },
+  { id:"EXAVITQu4vr4xnSDxMaL", label:"Bella — féminine, douce" },
+  { id:"MF3mGyEYCl7XYWbV9V6O", label:"Elli — féminine, jeune" },
+  { id:"LcfcDJNUP1GQjkzn1xUU", label:"Emily — féminine, sereine" },
+  { id:"XrExE9yKIg1WjnnlVkGX", label:"Matilda — féminine, chaleureuse" },
+  { id:"jsCqWAovK2LkecY7zXl4", label:"Freya — féminine, confiante" },
+  { id:"oWAxZDx7w5VEj9dCyTzz", label:"Grace — féminine, douce" },
+  { id:"z9fAnlkpzviPz146aGWa", label:"Glinda — féminine, lumineuse" },
+  { id:"ErXwobaYiN019PkySvjV", label:"Antoni — masculin, posé" },
+  { id:"VR6AewLTigWG4xSOukaG", label:"Arnold — masculin, grave" },
+  { id:"pNInz4obpgDQGcFmaJgB", label:"Adam — masculin, profond" },
+  { id:"TxGEqnHWrfWFTfGW9XjX", label:"Josh — masculin, jeune" },
+  { id:"yoZ06aMxZJJ28mfd3POQ", label:"Sam — masculin, énergique" },
+  { id:"ODq5zmih8GrVes37Dizd", label:"Patrick — masculin, autoritaire" },
+  { id:"g5CIjZEefAph4nQFvHAz", label:"Ethan — masculin, doux" },
+  { id:"onwK4e9ZLuTAKqWW03F9", label:"Daniel — masculin, britannique" },
+  { id:"N2lVS1w4EtoT3dr4eOWO", label:"Callum — masculin, intense" },
+  { id:"GBv7mTt0atIp3Br8iCZE", label:"Thomas — masculin, calme" },
+  { id:"bVMeCyTHy58xNoL34h3p", label:"Jeremy — masculin, américain" },
 ];
-
 const GK_CHARACTERS = [
   { id:"A", name:"Peter",  color:"#b03a2e", bg:"#fdf2f0", voiceId:"VR6AewLTigWG4xSOukaG", stability:0.55, similarity:0.80, style:0.20 },
   { id:"B", name:"Lisa",   color:"#1a5276", bg:"#eaf2f8", voiceId:"21m00Tcm4TlvDq8ikWAM", stability:0.65, similarity:0.85, style:0.15 },
@@ -789,16 +801,37 @@ if (screen==="choose") return (<><style>{CSS}</style>
               }}>
               {VOICE_IDS.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
-            <button className="btn btn-gh btn-sm"
-              onClick={async()=>{
-                stopAllAudio();
-                await new Promise(r=>setTimeout(r,80));
-                try{
-                  await fetchAndPlayLine("Bonjour, je suis " + ch.name, ch);
-                }catch(e){}
-              }}>
-              🔊 Test
-            </button>
+           <button className="btn btn-gh btn-sm"
+  onClick={async()=>{
+    stopAllAudio();
+    _stopFlag = false;
+    stopRef.current = false;
+    await new Promise(r=>setTimeout(r,80));
+    const testChar = {...ch};
+    const cacheKey = `${testChar.voiceId}:test`;
+    delete audioCache[cacheKey];
+    try{
+      const res = await fetch("/api/tts",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          text:"Bonjour, voici ma voix.",
+          voiceId: testChar.voiceId,
+          stability: testChar.stability,
+          similarity: testChar.similarity,
+          style: testChar.style,
+        }),
+      });
+      if(!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      _currentAudio = audio;
+      audio.play();
+    }catch(e){}
+  }}>
+  🔊 Test
+</button>
           </div>
         ))}
       </div>
