@@ -412,7 +412,9 @@ export default function App() {
     }
     nl();
   }
-  async function playSingle(text,charId){
+async function playSingle(text,charId){
+    stopTTS();
+    await new Promise(r=>setTimeout(r,100));
     try{await speakLine(text,getChar(charId),()=>{});}
     catch(e){setSErr("Voix : "+e.message);}
   }
