@@ -144,6 +144,7 @@ function similarity(a, b) {
     dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
   return 1-dp[la][lb]/Math.max(la,lb);
 }
+
 function makeCloze(text, level=0.38) {
   const words=text.split(/\s+/);
   const blanks={};
@@ -155,19 +156,31 @@ function makeCloze(text, level=0.38) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   API CALLS — all via server functions
+   TTS — via /api/tts (ElevenLabs, server-side key)
 ───────────────────────────────────────────────────────────────────────── */
+const audioCache = {};
+let currentAudio = null;
+let stopTTSFlag  = false;
 
-// TTS via /api/tts
-const audioCache={};
-let currentAudio=null;
-let stopTTSFlag=false;
+function stopTTS() {
+  stopTTSFlag = true;
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.src = "";
+    currentAudio = null;
+  }
+}
 
-async function speakLine(text, char, onEnd) {
+async function speakLine(text, char) {
+  // Stop any playing audio first
   stopTTSFlag = false;
-  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.src = "";
+    currentAudio = null;
+  }
 
-  const cacheKey = `${char.voiceId}:${text.slice(0, 60)}`;
+  const cacheKey = `${char.voiceId}:${text.slice(0,80)}`;
   let audioUrl = audioCache[cacheKey];
 
   if (!audioUrl) {
@@ -176,10 +189,10 @@ async function speakLine(text, char, onEnd) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
-        voiceId: char.voiceId,
-        stability: char.stability,
+        voiceId:    char.voiceId,
+        stability:  char.stability,
         similarity: char.similarity,
-        style: char.style,
+        style:      char.style,
       }),
     });
     if (!res.ok) {
@@ -191,66 +204,90 @@ async function speakLine(text, char, onEnd) {
     audioCache[cacheKey] = audioUrl;
   }
 
-  if (stopTTSFlag) { onEnd?.(); return; }
+  if (stopTTSFlag) return;
 
-  return new Promise((resolve, reject) => {
+  // Play and wait for completion
+  await new Promise((resolve, reject) => {
     const audio = new Audio(audioUrl);
     currentAudio = audio;
-    audio.onended = () => { currentAudio = null; resolve(); onEnd?.(); };
-    audio.onerror = (e) => { currentAudio = null; reject(new Error("Audio error")); };
+    audio.onended  = () => { currentAudio = null; resolve(); };
+    audio.onerror  = () => { currentAudio = null; reject(new Error("Audio playback error")); };
     audio.play().catch(reject);
   });
 }
 
-// STT via /api/stt (ElevenLabs Scribe)
+async function playCtxLines(ctxLines, getCharFn, onDone, onError) {
+  for (let i = 0; i < ctxLines.length; i++) {
+    if (stopTTSFlag) break;
+    const l = ctxLines[i];
+    try {
+      await speakLine(l.text, getCharFn(l.ch));
+      // Natural pause between lines
+      if (i < ctxLines.length - 1 && !stopTTSFlag) {
+        await new Promise(r => setTimeout(r, 400));
+      }
+    } catch(e) {
+      onError(e.message);
+      return;
+    }
+  }
+  if (!stopTTSFlag) onDone();
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   STT — via /api/stt (ElevenLabs Scribe, server-side key)
+───────────────────────────────────────────────────────────────────────── */
 async function transcribeAudio(blob) {
-  const arrayBuffer=await blob.arrayBuffer();
-  const base64=btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-  const res=await fetch("/api/stt",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({audio:base64, mimeType:blob.type||"audio/webm"}),
+  const arrayBuffer = await blob.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  const res = await fetch("/api/stt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio: base64, mimeType: blob.type || "audio/webm" }),
   });
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"STT error");}
-  const data=await res.json();
-  return data.text||"";
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || "STT error");
+  }
+  const data = await res.json();
+  return data.text || "";
 }
 
-// Extract script from images/PDF via /api/extract (Gemini)
+/* ─────────────────────────────────────────────────────────────────────────
+   EXTRACT — via /api/extract (Gemini, server-side key)
+───────────────────────────────────────────────────────────────────────── */
 async function extractScript(files, characters) {
-  const res=await fetch("/api/extract",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({files, characters}),
+  const res = await fetch("/api/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files, characters }),
   });
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"Extract error");}
-  const data=await res.json();
-  return data.lines||[];
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || "Extract error");
+  }
+  const data = await res.json();
+  return data.lines || [];
 }
 
-// Convert file to base64
-function fileToBase64(file){
-  return new Promise((res,rej)=>{
-    const reader=new FileReader();
-    reader.onload=e=>res({
-      base64:e.target.result.split(",")[1],
-      mimeType:file.type,
-      name:file.name,
-    });
-    reader.onerror=rej;
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload  = e => res({ base64: e.target.result.split(",")[1], mimeType: file.type, name: file.name });
+    reader.onerror = rej;
     reader.readAsDataURL(file);
   });
 }
 
-function getSupportedMime(){
+function getSupportedMime() {
   return ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4","audio/wav"]
-    .find(t=>MediaRecorder.isTypeSupported(t))||"";
+    .find(t => MediaRecorder.isTypeSupported(t)) || "";
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
    CSS
 ───────────────────────────────────────────────────────────────────────── */
-const CSS=`
+const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Outfit:wght@300;400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:#f6f3ee;color:#1a1a1a;font-family:'Outfit',sans-serif;min-height:100vh}
@@ -323,7 +360,7 @@ body{background:#f6f3ee;color:#1a1a1a;font-family:'Outfit',sans-serif;min-height
 .sbadge{display:inline-flex;align-items:center;gap:4px;background:#f5f0e8;border-radius:20px;padding:3px 11px;font-size:.75rem;font-weight:500;color:#777}
 .done-w{text-align:center;padding:30px 16px}
 .bigp{font-family:'Cormorant Garamond',serif;font-size:5rem;font-weight:600;line-height:1}
-.rply{background:none;border:none;cursor:pointer;opacity:.4;transition:opacity .14px;padding:3px 5px;font-size:.95rem;vertical-align:middle}
+.rply{background:none;border:none;cursor:pointer;opacity:.4;transition:opacity .14s;padding:3px 5px;font-size:.95rem;vertical-align:middle}
 .rply:hover{opacity:1}
 .err-banner{background:#fdedec;border:1px solid #f0b0a8;color:#7b2020;border-radius:8px;padding:10px 14px;font-size:.82rem;margin:8px 0;line-height:1.5}
 .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin:12px 0}
@@ -333,7 +370,7 @@ body{background:#f6f3ee;color:#1a1a1a;font-family:'Outfit',sans-serif;min-height
 .step-num{width:28px;height:28px;border-radius:50%;background:#1a1a1a;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;flex-shrink:0;margin-top:2px}
 .step-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:20px}
 .step-content{flex:1}
-.upload-zone{border:2px dashed #cec8bf;border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s}
+.upload-zone{border:2px dashed #cec8bf;border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;display:block}
 .upload-zone:hover{border-color:#1a1a1a;background:#f8f5f0}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.char-grid{grid-template-columns:repeat(3,1fr)}}
 `;
@@ -354,13 +391,13 @@ export default function App() {
   const [cloze,     setCloze]   = useState(null);
   const [clozeA,    setClozeA]  = useState({});
 
-  // Import state
+  // Import
   const [importChars, setIC]    = useState(DEFAULT_CHARACTERS.map(c=>({...c})));
-  const [importFiles, setIF]    = useState([]); // [{base64, mimeType, name, url?}]
+  const [importFiles, setIF]    = useState([]);
   const [importing,   setImp]   = useState(false);
   const [importErr,   setIErr]  = useState("");
 
-  // Oral state
+  // Oral
   const [oPhase,    setOP]      = useState("idle");
   const [speakErr,  setSErr]    = useState("");
   const [recSec,    setRecSec]  = useState(0);
@@ -374,166 +411,168 @@ export default function App() {
   const mediaRef  = useRef(null);
   const chunksRef = useRef([]);
 
-  const getChar  = id => chars.find(c=>c.id===id);
-  const myLines  = script.filter(l=>l.ch===chosen);
+  const getChar  = id => chars.find(c => c.id === id);
+  const myLines  = script.filter(l => l.ch === chosen);
 
-  useEffect(()=>()=>{stopTTS();},[]);
+  useEffect(() => () => { stopTTS(); }, []);
 
-  function getCtx(line){
-    const i=script.findIndex(l=>l.id===line.id);
-    const ctx=[];
-    for(let k=i-1;k>=0&&ctx.length<4;k--){
-      if(script[k].ch!==chosen) ctx.unshift(script[k]);
+  function getCtx(line) {
+    const i = script.findIndex(l => l.id === line.id);
+    const ctx = [];
+    for (let k = i-1; k >= 0 && ctx.length < 4; k--) {
+      if (script[k].ch !== chosen) ctx.unshift(script[k]);
       else break;
     }
     return ctx;
   }
-  function resetOral(){setOP("idle");setSErr("");setRecSec(0);setRB(null);setRU(null);setTr("");setTE("");setTL(false);}
 
-  function startMode(m){
-    stopTTS();stopRec();
-    setMode(m);setIdx(0);setFeed(null);setInput("");
-    setScore({ok:0,tot:0});resetOral();
-    if(m==="cloze"){setCloze(makeCloze(myLines[0]?.text||""));setClozeA({});}
+  function resetOral() {
+    setOP("idle"); setSErr(""); setRecSec(0);
+    setRB(null); setRU(null); setTr(""); setTE(""); setTL(false);
+  }
+
+  function startMode(m) {
+    stopTTS(); stopRec();
+    setMode(m); setIdx(0); setFeed(null); setInput("");
+    setScore({ok:0,tot:0}); resetOral();
+    if (m==="cloze") { setCloze(makeCloze(myLines[0]?.text||"")); setClozeA({}); }
     setScreen("play");
   }
-  function next(){
-    stopTTS();stopRec();
-    const n=idx+1;
-    if(n>=myLines.length){setScreen("done");return;}
-    setIdx(n);setFeed(null);setInput("");resetOral();
-    if(mode==="cloze"){setCloze(makeCloze(myLines[n].text));setClozeA({});}
+
+  function next() {
+    stopTTS(); stopRec();
+    const n = idx + 1;
+    if (n >= myLines.length) { setScreen("done"); return; }
+    setIdx(n); setFeed(null); setInput(""); resetOral();
+    if (mode==="cloze") { setCloze(makeCloze(myLines[n].text)); setClozeA({}); }
   }
 
   /* ── TTS ── */
-async function playCtx() {
-  const line = myLines[idx]; if (!line) return;
-  const ctx = getCtx(line);
-  if (!ctx.length) { setOP("waitRec"); return; }
-  setOP("speaking"); setSErr("");
-
-  for (let i = 0; i < ctx.length; i++) {
-    if (stopTTSFlag) break;
-    const l = ctx[i];
-    try {
-      await speakLine(l.text, getChar(l.ch), null);
-      if (i < ctx.length - 1 && !stopTTSFlag) {
-        await new Promise(r => setTimeout(r, 350));
-      }
-    } catch (e) {
-      setSErr("Voix : " + e.message);
-      setOP("waitRec");
-      return;
-    }
+  function handlePlayCtx() {
+    const line = myLines[idx]; if (!line) return;
+    const ctx = getCtx(line);
+    if (!ctx.length) { setOP("waitRec"); return; }
+    setOP("speaking"); setSErr("");
+    playCtxLines(
+      ctx,
+      getChar,
+      () => setOP("waitRec"),
+      (err) => { setSErr("Voix : " + err); setOP("waitRec"); }
+    );
   }
-  if (!stopTTSFlag) setOP("waitRec");
-}
-async function playSingle(text,charId){
+
+  async function playSingle(text, charId) {
     stopTTS();
-    await new Promise(r=>setTimeout(r,100));
-    try{await speakLine(text,getChar(charId),()=>{});}
-    catch(e){setSErr("Voix : "+e.message);}
+    await new Promise(r => setTimeout(r, 100));
+    try { await speakLine(text, getChar(charId)); }
+    catch(e) { setSErr("Voix : " + e.message); }
   }
 
   /* ── Recording ── */
-  async function startRec(){
-    setRecSec(0);setRB(null);setRU(null);setTr("");setTE("");setOP("recording");
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      chunksRef.current=[];
-      const mime=getSupportedMime();
-      const mr=new MediaRecorder(stream,mime?{mimeType:mime}:{});
-      mediaRef.current=mr;
-      mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
+  async function startRec() {
+    setRecSec(0); setRB(null); setRU(null); setTr(""); setTE(""); setOP("recording");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      chunksRef.current = [];
+      const mime = getSupportedMime();
+      const mr = new MediaRecorder(stream, mime ? {mimeType:mime} : {});
+      mediaRef.current = mr;
+      mr.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data); };
       mr.start(200);
-      timerRef.current=setInterval(()=>setRecSec(s=>s+1),1000);
-    }catch(e){setTE("Accès micro refusé.");setOP("waitRec");}
-  }
-  function stopRec(){
-    if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
-    if(mediaRef.current?.state!=="inactive"){
-      try{mediaRef.current?.stop();}catch(e){}
-      mediaRef.current?.stream?.getTracks().forEach(t=>t.stop());
+      timerRef.current = setInterval(() => setRecSec(s=>s+1), 1000);
+    } catch(e) {
+      setTE("Accès micro refusé."); setOP("waitRec");
     }
   }
-  function finishRec(){
-    stopRec();
-    setTimeout(()=>{
-      const mime=getSupportedMime()||"audio/webm";
-      const blob=new Blob(chunksRef.current,{type:mime});
-      setRB(blob);setRU(URL.createObjectURL(blob));setOP("recDone");
-    },350);
+
+  function stopRec() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (mediaRef.current?.state !== "inactive") {
+      try { mediaRef.current?.stop(); } catch(e) {}
+      mediaRef.current?.stream?.getTracks().forEach(t => t.stop());
+    }
   }
-  async function runTranscription(){
-    if(!recBlob)return;
-    setTL(true);setTE("");
-    try{const t=await transcribeAudio(recBlob);setTr(t);}
-    catch(e){setTE("Transcription : "+e.message);}
+
+  function finishRec() {
+    stopRec();
+    setTimeout(() => {
+      const mime = getSupportedMime() || "audio/webm";
+      const blob = new Blob(chunksRef.current, {type:mime});
+      setRB(blob); setRU(URL.createObjectURL(blob)); setOP("recDone");
+    }, 350);
+  }
+
+  async function runTranscription() {
+    if (!recBlob) return;
+    setTL(true); setTE("");
+    try { const t = await transcribeAudio(recBlob); setTr(t); }
+    catch(e) { setTE("Transcription : " + e.message); }
     setTL(false);
   }
-  function evalRec(){
-    const exp=myLines[idx].text;
-    const sim=similarity(transcript||"",exp);
-    const ok=sim>0.68;
-    setScore(s=>({ok:s.ok+(ok?1:0),tot:s.tot+1}));
-    setFeed({ok,sim,expected:exp,got:transcript});
+
+  function evalRec() {
+    const exp = myLines[idx].text;
+    const sim = similarity(transcript||"", exp);
+    const ok  = sim > 0.68;
+    setScore(s => ({ok:s.ok+(ok?1:0), tot:s.tot+1}));
+    setFeed({ok, sim, expected:exp, got:transcript});
   }
 
   /* ── Cloze / Write ── */
-  function checkCloze(){
-    if(!cloze)return;
-    let c=0;
-    Object.entries(cloze.blanks).forEach(([i,w])=>{if(similarity(clozeA[i]||"",w)>0.78)c++;});
-    const tot=Object.keys(cloze.blanks).length;
-    setScore(s=>({ok:s.ok+(c===tot?1:0),tot:s.tot+1}));
-    setFeed({ok:c===tot,correct:c,total:tot,expected:myLines[idx].text});
-  }
-  function checkWrite(){
-    const exp=myLines[idx].text;
-    const sim=similarity(input,exp);
-    setScore(s=>({ok:s.ok+(sim>0.72?1:0),tot:s.tot+1}));
-    setFeed({ok:sim>0.72,sim,expected:exp});
+  function checkCloze() {
+    if (!cloze) return;
+    let c = 0;
+    Object.entries(cloze.blanks).forEach(([i,w]) => { if(similarity(clozeA[i]||"",w)>0.78) c++; });
+    const tot = Object.keys(cloze.blanks).length;
+    setScore(s => ({ok:s.ok+(c===tot?1:0), tot:s.tot+1}));
+    setFeed({ok:c===tot, correct:c, total:tot, expected:myLines[idx].text});
   }
 
-  /* ── File import (photos + PDF) ── */
-  async function handleFiles(e){
-    const files=Array.from(e.target.files);
-    const converted=await Promise.all(files.map(async f=>{
-      const data=await fileToBase64(f);
+  function checkWrite() {
+    const exp = myLines[idx].text;
+    const sim = similarity(input, exp);
+    setScore(s => ({ok:s.ok+(sim>0.72?1:0), tot:s.tot+1}));
+    setFeed({ok:sim>0.72, sim, expected:exp});
+  }
+
+  /* ── File import ── */
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files);
+    const converted = await Promise.all(files.map(async f => {
+      const data = await fileToBase64(f);
       return {...data, url: f.type.startsWith("image/") ? URL.createObjectURL(f) : null};
     }));
-    setIF(prev=>[...prev,...converted]);
+    setIF(prev => [...prev, ...converted]);
   }
 
-  async function runImport(){
-    if(!importFiles.length){setIErr("Ajoutez au moins un fichier.");return;}
-    setImp(true);setIErr("");
-    try{
-      const lines=await extractScript(importFiles,importChars);
-      setScript(lines.map((l,i)=>({...l,id:i+1})));
+  async function runImport() {
+    if (!importFiles.length) { setIErr("Ajoutez au moins un fichier."); return; }
+    setImp(true); setIErr("");
+    try {
+      const lines = await extractScript(importFiles, importChars);
+      setScript(lines.map((l,i) => ({...l, id:i+1})));
       setChars(importChars);
       setScreen("choose");
-    }catch(e){setIErr("Erreur : "+e.message);}
+    } catch(e) { setIErr("Erreur : " + e.message); }
     setImp(false);
   }
 
-  const fmt=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-  const Mast=()=>(
+  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  const Mast = () => (
     <div className="mast">
       <h1>Théâtre</h1>
       <p className="sub">Apprenez votre rôle</p>
     </div>
   );
 
-  /* ══════════════════════════════════════════════════════════════
-     HOME
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="home") return(<><style>{CSS}</style>
+  /* ══════════ HOME ══════════ */
+  if (screen==="home") return (<><style>{CSS}</style>
     <div className="app"><Mast/>
       <div className="card">
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.3rem",marginBottom:14}}>Quel texte voulez-vous apprendre ?</h2>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div className="mtile" onClick={()=>{setScript(GK_SCRIPT);setChars(GK_CHARACTERS);setScreen("choose");}}>
+          <div className="mtile" onClick={()=>{setScript(GK_SCRIPT);setChars(GK_CHARACTERS);setChosen(null);setScreen("choose");}}>
             <div className="mico">📖</div>
             <div className="mtit">George Kaplan — Frédéric Sonntag</div>
             <div className="mdsc">Texte intégral déjà chargé, prêt à l'emploi</div>
@@ -548,28 +587,23 @@ async function playSingle(text,charId){
     </div>
   </>);
 
-  /* ══════════════════════════════════════════════════════════════
-     IMPORT
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="import") return(<><style>{CSS}</style>
+  /* ══════════ IMPORT ══════════ */
+  if (screen==="import") return (<><style>{CSS}</style>
     <div className="app"><Mast/>
       <div className="card">
         <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",marginBottom:18}}>Importer votre texte</h2>
 
-        {/* Step 1 — Characters */}
         <div className="step-row">
           <div className="step-num">1</div>
           <div className="step-content">
             <p style={{fontWeight:600,fontSize:".9rem",marginBottom:10}}>Nommez vos personnages</p>
-            {importChars.map((ch,i)=>(
+            {importChars.map((ch,i) => (
               <div key={ch.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{width:28,height:28,borderRadius:"50%",background:ch.bg,border:`2px solid ${ch.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".8rem",fontWeight:700,color:ch.color,flexShrink:0}}>{ch.id}</div>
-                <input className="inp" style={{flex:"1 1 120px",minWidth:100}} placeholder={`Nom du personnage ${ch.id}`}
-                  value={ch.name}
-                  onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,name:e.target.value}:c))}/>
+                <input className="inp" style={{flex:"1 1 120px",minWidth:100}} placeholder={`Nom ${ch.id}`}
+                  value={ch.name} onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,name:e.target.value}:c))}/>
                 <select className="inp" style={{flex:"1 1 160px",minWidth:140,fontSize:".78rem"}}
-                  value={ch.voiceId}
-                  onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,voiceId:e.target.value}:c))}>
+                  value={ch.voiceId} onChange={e=>setIC(cs=>cs.map((c,j)=>j===i?{...c,voiceId:e.target.value}:c))}>
                   {VOICE_IDS.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}
                 </select>
               </div>
@@ -577,26 +611,19 @@ async function playSingle(text,charId){
           </div>
         </div>
 
-        {/* Step 2 — Files */}
         <div className="step-row">
           <div className="step-num">2</div>
           <div className="step-content">
             <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Ajoutez vos fichiers</p>
-            <p style={{fontSize:".78rem",color:"#888",marginBottom:12,lineHeight:1.5}}>
-              Photos de pages (JPG, PNG) ou fichier PDF. Vous pouvez en ajouter plusieurs.
-            </p>
-
+            <p style={{fontSize:".78rem",color:"#888",marginBottom:12,lineHeight:1.5}}>Photos (JPG, PNG) ou PDF. Plusieurs fichiers acceptés.</p>
             <label className="upload-zone">
               <div style={{fontSize:"2rem",marginBottom:8}}>📎</div>
               <div style={{fontWeight:500,fontSize:".9rem"}}>Cliquez pour ajouter</div>
               <div style={{fontSize:".75rem",color:"#aaa",marginTop:4}}>Photos ou PDF</div>
-              <input type="file" accept="image/*,.pdf,application/pdf" multiple
-                style={{display:"none"}} onChange={handleFiles}/>
+              <input type="file" accept="image/*,.pdf,application/pdf" multiple style={{display:"none"}} onChange={handleFiles}/>
             </label>
-
             {importFiles.length>0&&(
               <div style={{marginTop:12}}>
-                {/* Image previews */}
                 {importFiles.filter(f=>f.url).length>0&&(
                   <div className="photo-grid">
                     {importFiles.filter(f=>f.url).map((f,i)=>(
@@ -608,11 +635,9 @@ async function playSingle(text,charId){
                     ))}
                   </div>
                 )}
-                {/* PDF tags */}
                 {importFiles.filter(f=>!f.url).map((f,i)=>(
-                  <span key={i} className="file-tag">
-                    📄 {f.name}
-                    <button onClick={()=>setIF(fs=>fs.filter((_,j)=>j!==importFiles.findIndex(x=>x.name===f.name)))}>✕</button>
+                  <span key={i} className="file-tag">📄 {f.name}
+                    <button onClick={()=>setIF(fs=>fs.filter(x=>x.name!==f.name))}>✕</button>
                   </span>
                 ))}
                 <p style={{fontSize:".74rem",color:"#aaa",marginTop:6}}>{importFiles.length} fichier(s)</p>
@@ -621,14 +646,10 @@ async function playSingle(text,charId){
           </div>
         </div>
 
-        {/* Step 3 — Extract */}
         <div className="step-row">
           <div className="step-num">3</div>
           <div className="step-content">
             <p style={{fontWeight:600,fontSize:".9rem",marginBottom:6}}>Extraire les répliques</p>
-            <p style={{fontSize:".78rem",color:"#888",marginBottom:10,lineHeight:1.5}}>
-              Gemini va lire vos fichiers et extraire uniquement les répliques parlées, en ignorant didascalies et texte barré.
-            </p>
             {importErr&&<div className="err-banner" style={{marginBottom:10}}>{importErr}</div>}
             {importing&&<div className="wload"><div className="spin"/><span>Analyse en cours…</span></div>}
             <button className="btn btn-dk" disabled={!importFiles.length||importing} onClick={runImport}>
@@ -642,17 +663,15 @@ async function playSingle(text,charId){
     </div>
   </>);
 
-  /* ══════════════════════════════════════════════════════════════
-     CHOOSE CHARACTER
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="choose") return(<><style>{CSS}</style>
+  /* ══════════ CHOOSE CHARACTER ══════════ */
+  if (screen==="choose") return (<><style>{CSS}</style>
     <div className="app"><Mast/>
       <div className="card">
         <p className="lbl">Choisissez votre personnage</p>
         <div className="char-grid">
-          {chars.map(ch=>{
-            const count=script.filter(l=>l.ch===ch.id).length;
-            return(
+          {chars.map(ch => {
+            const count = script.filter(l=>l.ch===ch.id).length;
+            return (
               <div key={ch.id} className={`ctile${chosen===ch.id?" sel":""}`}
                 style={{background:ch.bg,color:ch.color}} onClick={()=>setChosen(ch.id)}>
                 <div className="ci">{ch.id}</div>
@@ -663,29 +682,29 @@ async function playSingle(text,charId){
           })}
         </div>
         <div className="nav">
-          <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>Continuer →</button>
+          <button className="btn btn-dk" disabled={!chosen} style={{flex:1}} onClick={()=>setScreen("mode")}>
+            Continuer →
+          </button>
           <span className="bk" onClick={()=>setScreen("home")}>← Textes</span>
         </div>
       </div>
     </div>
   </>);
 
-  /* ══════════════════════════════════════════════════════════════
-     CHOOSE MODE
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="mode"){
-    const ch=getChar(chosen);
-    return(<><style>{CSS}</style>
+  /* ══════════ CHOOSE MODE ══════════ */
+  if (screen==="mode") {
+    const ch = getChar(chosen);
+    return (<><style>{CSS}</style>
       <div className="app"><Mast/>
         <div className="card">
           <p className="lbl" style={{color:ch.color}}>Rôle : {ch.name} — {myLines.length} répliques</p>
           <div className="mgrid">
             {[
-              {id:"oral", icon:"🎤",title:"Oral",          desc:"Voix naturelles + enregistrement + transcription automatique"},
+              {id:"oral", icon:"🎤",title:"Oral",          desc:"Voix naturelles + enregistrement + transcription"},
               {id:"cloze",icon:"✏️",title:"Texte à trous",  desc:"Retrouvez les mots manquants"},
               {id:"write",icon:"📝",title:"Reconstitution", desc:"Réécrivez de mémoire"},
               {id:"review",icon:"👁️",title:"Lecture",       desc:"Parcourez vos répliques dans le contexte"},
-            ].map(m=>(
+            ].map(m => (
               <div key={m.id} className="mtile" onClick={()=>startMode(m.id)}>
                 <div className="mico">{m.icon}</div>
                 <div className="mtit">{m.title}</div>
@@ -699,12 +718,10 @@ async function playSingle(text,charId){
     </>);
   }
 
-  /* ══════════════════════════════════════════════════════════════
-     DONE
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="done"){
-    const pct=score.tot>0?Math.round(score.ok/score.tot*100):null;
-    return(<><style>{CSS}</style>
+  /* ══════════ DONE ══════════ */
+  if (screen==="done") {
+    const pct = score.tot>0 ? Math.round(score.ok/score.tot*100) : null;
+    return (<><style>{CSS}</style>
       <div className="app"><Mast/>
         <div className="card done-w">
           <div style={{fontSize:"3rem"}}>{pct===null?"🎭":pct>=80?"🏆":pct>=50?"💪":"📖"}</div>
@@ -722,16 +739,14 @@ async function playSingle(text,charId){
     </>);
   }
 
-  /* ══════════════════════════════════════════════════════════════
-     PLAY
-  ══════════════════════════════════════════════════════════════ */
-  if(screen==="play"){
-    const line=myLines[idx];if(!line)return null;
-    const ch=getChar(chosen);
-    const ctx=getCtx(line);
-    const pct=(idx/myLines.length)*100;
+  /* ══════════ PLAY ══════════ */
+  if (screen==="play") {
+    const line = myLines[idx]; if (!line) return null;
+    const ch   = getChar(chosen);
+    const ctx  = getCtx(line);
+    const pct  = (idx/myLines.length)*100;
 
-    return(<><style>{CSS}</style>
+    return (<><style>{CSS}</style>
       <div className="app"><Mast/>
         <div className="card">
           <div className="prow">
@@ -760,14 +775,16 @@ async function playSingle(text,charId){
 
           <div className="cue" style={{color:ch.color}}>🎭 {ch.name} — réplique {idx+1}</div>
 
-          {/* ── ORAL ── */}
+          {/* ═══ ORAL ═══ */}
           {mode==="oral"&&(<>
             {speakErr&&<div className="err-banner">{speakErr}</div>}
+
             {oPhase==="idle"&&(
-              <button className="btn btn-dk" style={{width:"100%"}} onClick={playCtx}>
+              <button className="btn btn-dk" style={{width:"100%"}} onClick={handlePlayCtx}>
                 {ctx.length>0?"▶ Écouter le contexte":"▶ À mon tour"}
               </button>
             )}
+
             {oPhase==="speaking"&&(
               <div className="sbar">
                 <div className="dots"><span/><span/><span/></div>
@@ -776,13 +793,15 @@ async function playSingle(text,charId){
                   onClick={()=>{stopTTS();setOP("waitRec");}}>Passer</button>
               </div>
             )}
+
             {oPhase==="waitRec"&&!feedback&&(
               <div className="rarea">
-                <p style={{fontSize:".84rem",color:"#888",marginBottom:14}}>À vous ! Dites votre réplique, puis appuyez sur Arrêter.</p>
+                <p style={{fontSize:".84rem",color:"#888",marginBottom:14}}>À vous ! Dites votre réplique puis appuyez sur Arrêter.</p>
                 {transErr&&<p style={{fontSize:".8rem",color:"#b03a2e",marginBottom:10}}>{transErr}</p>}
                 <button className="btn btn-dk" onClick={startRec}>🎤 Enregistrer</button>
               </div>
             )}
+
             {oPhase==="recording"&&(
               <div className="rarea on">
                 <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:"center",marginBottom:6}}>
@@ -793,6 +812,7 @@ async function playSingle(text,charId){
                 <button className="btn btn-rd" style={{marginTop:10}} onClick={finishRec}>⏹ Arrêter</button>
               </div>
             )}
+
             {oPhase==="recDone"&&!feedback&&(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {recUrl&&(
@@ -814,10 +834,11 @@ async function playSingle(text,charId){
                   <button className="btn btn-gn" onClick={()=>setFeed({ok:null,sim:null,expected:myLines[idx].text,selfEval:true})}>
                     ✓ Auto-évaluer
                   </button>
-                  <button className="btn btn-gh" onClick={()=>{resetOral();setOP("idle");}}>Réessayer</button>
+                  <button className="btn btn-gh" onClick={()=>{resetOral();}}>Réessayer</button>
                 </div>
               </div>
             )}
+
             {feedback&&(<>
               {feedback.selfEval?(
                 <div style={{background:"#f8f5f0",border:"1px solid #e0dad2",borderRadius:8,padding:"14px 15px",marginTop:8}}>
@@ -837,7 +858,9 @@ async function playSingle(text,charId){
                 </div>
               )}
               <button className="btn btn-gh btn-sm" style={{marginTop:8}}
-                onClick={()=>playSingle(feedback.expected,chosen)}>🔊 Écouter la version correcte</button>
+                onClick={()=>{stopTTS();playSingle(feedback.expected,chosen);}}>
+                🔊 Écouter la version correcte
+              </button>
               {!feedback.selfEval&&(
                 <div className="nav">
                   <button className="btn btn-dk" onClick={next} style={{flex:1}}>
@@ -849,7 +872,7 @@ async function playSingle(text,charId){
             </>)}
           </>)}
 
-          {/* ── CLOZE ── */}
+          {/* ═══ CLOZE ═══ */}
           {mode==="cloze"&&cloze&&(<>
             <div className="cloze-wrap">
               {cloze.words.map((w,i)=>{
@@ -878,7 +901,7 @@ async function playSingle(text,charId){
             </div>
           </>)}
 
-          {/* ── WRITE ── */}
+          {/* ═══ WRITE ═══ */}
           {mode==="write"&&(<>
             <textarea className="warea" value={input} onChange={e=>setInput(e.target.value)}
               placeholder="Écrivez votre réplique de mémoire…" disabled={!!feedback}/>
@@ -896,11 +919,11 @@ async function playSingle(text,charId){
             </div>
           </>)}
 
-          {/* ── REVIEW ── */}
+          {/* ═══ REVIEW ═══ */}
           {mode==="review"&&(<>
             <div className="rev-block" style={{background:ch.bg,borderLeft:`3px solid ${ch.color}`}}>
               {line.text}
-              <button className="rply" onClick={()=>playSingle(line.text,chosen)}>🔊</button>
+              <button className="rply" onClick={()=>{stopTTS();playSingle(line.text,chosen);}}>🔊</button>
             </div>
             <div className="nav">
               <button className="btn btn-dk" onClick={next} style={{flex:1}}>
@@ -916,5 +939,6 @@ async function playSingle(text,charId){
       </div>
     </>);
   }
+
   return null;
 }
