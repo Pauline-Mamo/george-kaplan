@@ -164,35 +164,43 @@ let currentAudio=null;
 let stopTTSFlag=false;
 
 async function speakLine(text, char, onEnd) {
-  stopTTSFlag=false;
-  if(currentAudio){currentAudio.pause();currentAudio=null;}
-  const cacheKey=`${char.voiceId}:${text.slice(0,60)}`;
-  let audioUrl=audioCache[cacheKey];
-  if(!audioUrl){
-    const res=await fetch("/api/tts",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
+  stopTTSFlag = false;
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+
+  const cacheKey = `${char.voiceId}:${text.slice(0, 60)}`;
+  let audioUrl = audioCache[cacheKey];
+
+  if (!audioUrl) {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         text,
-        voiceId:char.voiceId,
-        stability:char.stability,
-        similarity:char.similarity,
-        style:char.style,
+        voiceId: char.voiceId,
+        stability: char.stability,
+        similarity: char.similarity,
+        style: char.style,
       }),
     });
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"TTS error");}
-    const blob=await res.blob();
-    audioUrl=URL.createObjectURL(blob);
-    audioCache[cacheKey]=audioUrl;
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || "TTS error");
+    }
+    const blob = await res.blob();
+    audioUrl = URL.createObjectURL(blob);
+    audioCache[cacheKey] = audioUrl;
   }
-  if(stopTTSFlag){onEnd?.();return;}
-  const audio=new Audio(audioUrl);
-  currentAudio=audio;
-  audio.onended=()=>{currentAudio=null;if(!stopTTSFlag)onEnd?.();};
-  audio.onerror=()=>{currentAudio=null;onEnd?.();};
-  audio.play();
+
+  if (stopTTSFlag) { onEnd?.(); return; }
+
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(audioUrl);
+    currentAudio = audio;
+    audio.onended = () => { currentAudio = null; resolve(); onEnd?.(); };
+    audio.onerror = (e) => { currentAudio = null; reject(new Error("Audio error")); };
+    audio.play().catch(reject);
+  });
 }
-function stopTTS(){stopTTSFlag=true;if(currentAudio){currentAudio.pause();currentAudio=null;}}
 
 // STT via /api/stt (ElevenLabs Scribe)
 async function transcribeAudio(blob) {
@@ -398,29 +406,28 @@ export default function App() {
   }
 
   /* ── TTS ── */
- async function playCtx(){
-    const line=myLines[idx];if(!line)return;
-    const ctx=getCtx(line);
-    if(!ctx.length){setOP("waitRec");return;}
-    setOP("speaking");setSErr("");
-    
-    for(let i=0;i<ctx.length;i++){
-      if(stopTTSFlag) break;
-      const l=ctx[i];
-      try{
-        await new Promise((res,rej)=>{
-          speakLine(l.text,getChar(l.ch),res).catch(rej);
-        });
-        // Petite pause naturelle entre les répliques
-        if(i<ctx.length-1) await new Promise(r=>setTimeout(r,300));
-      }catch(e){
-        setSErr("Voix : "+e.message);
-        setOP("waitRec");
-        return;
+async function playCtx() {
+  const line = myLines[idx]; if (!line) return;
+  const ctx = getCtx(line);
+  if (!ctx.length) { setOP("waitRec"); return; }
+  setOP("speaking"); setSErr("");
+
+  for (let i = 0; i < ctx.length; i++) {
+    if (stopTTSFlag) break;
+    const l = ctx[i];
+    try {
+      await speakLine(l.text, getChar(l.ch), null);
+      if (i < ctx.length - 1 && !stopTTSFlag) {
+        await new Promise(r => setTimeout(r, 350));
       }
+    } catch (e) {
+      setSErr("Voix : " + e.message);
+      setOP("waitRec");
+      return;
     }
-    if(!stopTTSFlag) setOP("waitRec");
   }
+  if (!stopTTSFlag) setOP("waitRec");
+}
 async function playSingle(text,charId){
     stopTTS();
     await new Promise(r=>setTimeout(r,100));
